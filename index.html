@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15262B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Caderneta">
+<title>Caderneta — cartões e empréstimos</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%92%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E9EEEC; --sheet:#FAFBFA; --sheet-2:#F1F5F3; --ink:#15262B; --ink-2:#51646A; --ink-3:#7F9095;
+  --rule:#CAD5D1; --rule-2:#DFE6E3;
+  --owed:#A94F08; --paid:#1B7550; --credit:#2A5DB0; --stamp:#9E2A4E; --focus:#2457C5;
+  --warn-bg:#FBEFD9; --warn:#8A4B00;
+  --r-sm:6px; --r:10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1719; --sheet:#172225; --sheet-2:#1C292C; --ink:#E2EBE8; --ink-2:#9FB1AE; --ink-3:#71827F;
+    --rule:#2D3C3F; --rule-2:#233033;
+    --owed:#F0A45E; --paid:#5CC795; --credit:#7FA8F0; --stamp:#EE7C9F; --focus:#8DB0FF;
+    --warn-bg:#3A2A12; --warn:#F2C27A; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1719; --sheet:#172225; --sheet-2:#1C292C; --ink:#E2EBE8; --ink-2:#9FB1AE; --ink-3:#71827F;
+  --rule:#2D3C3F; --rule-2:#233033;
+  --owed:#F0A45E; --paid:#5CC795; --credit:#7FA8F0; --stamp:#EE7C9F; --focus:#8DB0FF;
+  --warn-bg:#3A2A12; --warn:#F2C27A; color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:15px/1.5 "Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+a{color:var(--focus)}
+
+.app{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+.rail{position:sticky;top:0;height:100vh;padding:22px 14px;border-right:1px solid var(--rule);display:flex;flex-direction:column;gap:4px;background:var(--paper)}
+.brand{font-weight:800;font-size:20px;letter-spacing:-.02em;padding:0 10px 18px}
+.brand small{display:block;font-weight:500;font-size:12px;color:var(--ink-3);letter-spacing:0}
+.nav-btn{display:flex;align-items:center;gap:10px;background:none;border:0;border-radius:var(--r-sm);padding:9px 10px;text-align:left;cursor:pointer;color:var(--ink-2);font-weight:600}
+.nav-btn svg{width:18px;height:18px;flex:none}
+.nav-btn:hover{background:var(--sheet-2);color:var(--ink)}
+.nav-btn[aria-current="page"]{background:var(--ink);color:var(--paper)}
+.save-state{margin-top:auto;font-size:12px;color:var(--ink-3);padding:0 10px}
+.save-state b{font-weight:600}
+.save-state.err{color:var(--stamp)}
+
+main{min-width:0;padding:0 28px 60px}
+.top{position:sticky;top:0;z-index:5;background:var(--paper);display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 0 12px;border-bottom:1px solid var(--rule);margin-bottom:22px}
+.month{display:flex;align-items:center;gap:4px}
+.month h1{margin:0 6px;font-size:30px;line-height:1.1;font-weight:800;letter-spacing:-.03em;min-width:0}
+.month h1 span{font-weight:400;color:var(--ink-3);margin-left:.3em}
+.month input[type=month]{position:absolute;opacity:0;pointer-events:none;width:1px}
+.icon-btn{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--rule);background:var(--sheet);border-radius:50%;cursor:pointer;flex:none}
+.icon-btn:hover{border-color:var(--ink-3)}
+.icon-btn svg{width:16px;height:16px}
+.top .spacer{flex:1}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule);background:var(--sheet);border-radius:var(--r-sm);padding:7px 12px;cursor:pointer;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.danger{color:var(--stamp)}
+.btn.small{padding:3px 9px;font-size:13px}
+.btn.link{border:0;background:none;padding:2px 4px;color:var(--focus)}
+.btn svg{width:15px;height:15px}
+
+h2{font-size:18px;font-weight:800;letter-spacing:-.01em;margin:0}
+h3{font-size:15px;font-weight:700;margin:0}
+.sec{margin:0 0 30px}
+.sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.sec-head p{margin:0;color:var(--ink-3);font-size:13px}
+.sec-head .spacer{flex:1}
+.muted{color:var(--ink-3)}
+.small{font-size:13px}
+.owed{color:var(--owed)} .paid{color:var(--paid)} .credit{color:var(--credit)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:28px}
+
+/* números de destaque */
+.ledger-head{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(0,1fr));gap:0;border-top:3px double var(--ink);border-bottom:1px solid var(--rule);margin-bottom:28px}
+.ledger-head > div{padding:14px 16px 14px 0}
+.ledger-head > div + div{padding-left:16px;border-left:1px solid var(--rule-2)}
+.ledger-head .lbl{font-size:13px;color:var(--ink-2);font-weight:600}
+.ledger-head .val{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.ledger-head .big .val{font-size:40px;font-weight:800;line-height:1.1;color:var(--owed)}
+.ledger-head .hint{font-size:12px;color:var(--ink-3)}
+
+/* tabelas */
+.tbl-wrap{overflow-x:auto;background:var(--sheet);border:1px solid var(--rule);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--rule-2);white-space:nowrap;vertical-align:middle}
+th{font-size:12px;font-weight:700;color:var(--ink-2);background:var(--sheet-2);position:sticky;top:0}
+tbody tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right}
+td.wrap{white-space:normal;min-width:180px}
+tfoot td{font-weight:800;border-top:2px solid var(--rule);border-bottom:0;background:var(--sheet-2)}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--sheet-2)}
+tr.sel td{background:var(--sheet-2)}
+tr.dim td{color:var(--ink-3)}
+td input,td select,dd input,dd select{width:100%;min-width:70px;border:1px solid transparent;background:transparent;border-radius:4px;padding:3px 6px}
+td input:hover,td select:hover,dd input:hover{border-color:var(--rule)}
+td input:focus,td select:focus,dd input:focus{border-color:var(--focus);background:var(--sheet);outline:none}
+td input.num,dd input.num{text-align:right}
+dd input{min-width:0;border-color:var(--rule)}
+td input.proj::placeholder{color:var(--ink-3);font-style:italic}
+td .row-actions{display:flex;gap:2px;justify-content:flex-end}
+
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:1px}
+
+/* carimbos — o elemento marcante */
+.stamp{display:inline-block;border:2px solid currentColor;border-radius:4px;padding:0 7px;font-size:12px;font-weight:800;line-height:18px;transform:rotate(-3deg);letter-spacing:.01em;white-space:nowrap}
+.stamp.quitado{color:var(--paid)}
+.stamp.aberto{color:var(--stamp)}
+.stamp.parcial{color:var(--owed);border-style:dashed}
+.stamp.credito{color:var(--credit)}
+.stamp.big{font-size:16px;line-height:26px;padding:0 12px;border-width:3px}
+
+.chip{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 8px;background:var(--sheet-2);border:1px solid var(--rule)}
+.chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+
+.card{background:var(--sheet);border:1px solid var(--rule);border-radius:var(--r);padding:16px}
+dl.kv{display:grid;grid-template-columns:1fr auto;gap:0;margin:0}
+dl.kv dt,dl.kv dd{margin:0;padding:7px 0;border-bottom:1px dashed var(--rule-2)}
+dl.kv dd{text-align:right;font-weight:700}
+dl.kv dt small{display:block;color:var(--ink-3);font-size:12px}
+dl.kv .tot{border-bottom:0;border-top:2px solid var(--ink);font-weight:800}
+
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+.field{display:flex;flex-direction:column;gap:3px;font-size:12px;font-weight:600;color:var(--ink-2)}
+.field input,.field select,.field textarea,.filters input,.filters select{border:1px solid var(--rule);background:var(--sheet);border-radius:var(--r-sm);padding:7px 9px;font-size:14px;font-weight:500;color:var(--ink);min-width:0}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:var(--r-sm);overflow:hidden}
+.seg button{border:0;background:var(--sheet);padding:6px 11px;cursor:pointer;font-weight:600;color:var(--ink-2)}
+.seg button + button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+
+/* devedores */
+.dev-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:24px;align-items:start}
+.dev-list{display:flex;flex-direction:column;background:var(--sheet);border:1px solid var(--rule);border-radius:var(--r);overflow:hidden;position:sticky;top:90px}
+.dev-list button{display:flex;justify-content:space-between;gap:8px;border:0;border-bottom:1px solid var(--rule-2);background:none;padding:9px 12px;cursor:pointer;text-align:left}
+.dev-list button:last-child{border-bottom:0}
+.dev-list button:hover{background:var(--sheet-2)}
+.dev-list button[aria-current="true"]{background:var(--ink);color:var(--paper)}
+.dev-list button[aria-current="true"] .owed{color:inherit}
+.dev-title{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.dev-title h2{font-size:32px;letter-spacing:-.03em}
+.months-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.months-strip button{border:1px solid var(--rule);background:var(--sheet);border-radius:var(--r-sm);padding:8px;text-align:left;cursor:pointer}
+.months-strip button.cur{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.months-strip .m{font-size:12px;color:var(--ink-3);font-weight:600}
+.months-strip .v{font-weight:700}
+.bar{height:4px;background:var(--rule-2);border-radius:2px;margin-top:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--owed)}
+
+.lanc-list .item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;padding:10px 14px;border-bottom:1px solid var(--rule-2)}
+.lanc-list .item:last-child{border-bottom:0}
+.lanc-list .t{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lanc-list .meta{font-size:13px;color:var(--ink-3)}
+.lanc-list .amt{text-align:right;font-weight:700}
+.lanc-list .prog{height:3px;background:var(--rule-2);border-radius:2px;margin-top:6px;grid-column:1/-1;overflow:hidden}
+.lanc-list .prog i{display:block;height:100%;background:var(--paid)}
+
+.notice{background:var(--warn-bg);color:var(--warn);border-radius:var(--r-sm);padding:10px 14px;font-size:14px;margin-bottom:14px}
+.empty{padding:28px;text-align:center;color:var(--ink-3)}
+
+dialog{border:0;border-radius:14px;padding:0;background:var(--sheet);color:var(--ink);width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 32px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(10,20,22,.5)}
+.dlg-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--rule)}
+.dlg-body{padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px;overflow:auto;max-height:calc(100vh - 170px)}
+.dlg-body .full{grid-column:1/-1}
+.dlg-foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;border-top:1px solid var(--rule)}
+.dlg-foot .spacer{flex:1}
+.pick{display:flex;flex-wrap:wrap;gap:6px}
+.pick label{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--rule);border-radius:999px;padding:3px 10px;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink)}
+.pick input{margin:0;accent-color:var(--ink)}
+.pick label:has(input:checked){background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.preview{border:1px dashed var(--rule);border-radius:var(--r-sm);padding:8px 12px;font-size:13px;max-height:160px;overflow:auto}
+.preview div{display:flex;justify-content:space-between;gap:10px}
+
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:999px;font-weight:600;opacity:0;pointer-events:none;transition:.2s;z-index:50}
+#toast.on{opacity:1;transform:translateX(-50%)}
+
+.tabs{display:none}
+.app:has(.welcome){display:block}
+.welcome{max-width:560px;margin:60px auto;padding:0 18px;text-align:left}
+.welcome code{word-break:break-all;background:var(--sheet-2);padding:1px 5px;border-radius:4px}
+.welcome h1{font-size:34px;letter-spacing:-.03em;margin:0 0 10px}
+
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .rail{display:none}
+  main{padding:0 14px 90px}
+  .month h1{font-size:23px}
+  .ledger-head{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .ledger-head .big{grid-column:1/-1}
+  .ledger-head > div.big + div{border-left:0;padding-left:0;border-top:1px solid var(--rule-2)}
+  .ledger-head > div:nth-child(n+2){border-top:1px solid var(--rule-2)}
+  .ledger-head > div:nth-child(4){border-left:0;padding-left:0}
+  .ledger-head .big .val{font-size:30px}
+  .dev-layout{grid-template-columns:minmax(0,1fr)}
+  .dev-layout > div{min-width:0}
+  .grid2 > *{min-width:0}
+  .dev-list{position:static;flex-direction:row;overflow-x:auto}
+  .dev-list button{border-bottom:0;border-right:1px solid var(--rule-2);flex-direction:column;gap:0;white-space:nowrap}
+  .months-strip{grid-template-columns:repeat(3,1fr)}
+  .grid2{grid-template-columns:1fr}
+  .dlg-body{grid-template-columns:1fr}
+  .tabs{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:10;background:var(--sheet);border-top:1px solid var(--rule);padding:4px 4px calc(4px + env(safe-area-inset-bottom))}
+  .tabs .nav-btn{flex:1;flex-direction:column;gap:2px;font-size:11px;padding:6px 2px;text-align:center}
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+
+</style>
+</head>
+<body>
+<div id="app" class="app"></div>
+<dialog id="dlg"></dialog>
+<dialog id="conf"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+/* ===== Núcleo de cálculo — sem DOM ===== */
+const Core = (() => {
+  const r2 = v => Math.round((v + Number.EPSILON) * 100) / 100;
+  const pad = n => String(n).padStart(2, '0');
+  const ym = (y, m) => `${y}-${pad(m)}`;
+  const addMonths = (mes, k) => {
+    const [y, m] = mes.split('-').map(Number);
+    const t = y * 12 + (m - 1) + k;
+    return ym(Math.floor(t / 12), (t % 12) + 1);
+  };
+  const daysIn = mes => { const [y, m] = mes.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+  const dateIn = (mes, dia) => `${mes}-${pad(Math.min(dia, daysIn(mes)))}`;
+  const monthDiff = (a, b) => { const [ya, ma] = a.split('-').map(Number); const [yb, mb] = b.split('-').map(Number); return (yb - ya) * 12 + (mb - ma); };
+  const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+
+  const meioDe = (cfg, nome) => cfg.meios.find(m => m.n === nome);
+
+  /* Vencimento da parcela k (regra da planilha, corrigida para o ano):
+     compra antes do dia de fechamento → fatura do mês da compra; senão, do mês seguinte. */
+  function vencimento(cfg, meioNome, dataISO, k, primeiraCobranca) {
+    const meio = meioDe(cfg, meioNome);
+    const mesCompra = dataISO.slice(0, 7);
+    if (!meio || meio.t !== 'cartao') {
+      // dinheiro/pix: primeira cobrança informada (ou próximo dia padrão) e depois mês a mês
+      let first = primeiraCobranca;
+      if (!first) {
+        const dia = (meio && meio.v) || 15;
+        const d = Number(dataISO.slice(8, 10));
+        first = dateIn(d < dia ? mesCompra : addMonths(mesCompra, 1), dia);
+      }
+      return dateIn(addMonths(first.slice(0, 7), k - 1), Number(first.slice(8, 10)));
+    }
+    const d = Number(dataISO.slice(8, 10));
+    const off = (k - 1) + (d < meio.f ? 0 : 1) + (meio.x || 0);
+    return dateIn(addMonths(mesCompra, off), meio.v);
+  }
+
+  function gerarParcelas(cfg, { meio, data, total, n, inicio = 1, primeira }) {
+    const out = [];
+    const primeiraK = primeira ? primeira : null;
+    for (let k = inicio; k <= n; k++) {
+      let venc;
+      if (primeiraK) venc = dateIn(addMonths(primeiraK.slice(0, 7), k - inicio), Number(primeiraK.slice(8, 10)));
+      else venc = vencimento(cfg, meio, data, k);
+      out.push([k, total / n, venc]);
+    }
+    return out;
+  }
+
+  /* Índices */
+  function indexar(compras) {
+    const porMes = new Map();
+    for (const c of compras) {
+      for (const p of c.p) {
+        const mes = p[2].slice(0, 7);
+        let a = porMes.get(mes); if (!a) porMes.set(mes, a = []);
+        a.push({ c, k: p[0], v: p[1], venc: p[2] });
+      }
+    }
+    return porMes;
+  }
+
+  function dataCobranca(cfg, cob, mes) {
+    const meio = meioDe(cfg, cob.m);
+    const fech = meio && meio.t === 'cartao' ? meio.f : 1;
+    const alvo = cob.d < fech ? mes : addMonths(mes, -1);
+    return dateIn(alvo, cob.d);
+  }
+
+  function resumo(cfg, idx, pags, mes, hoje = todayISO()) {
+    const inst = idx.get(mes) || [];
+    const eu = cfg.eu;
+    const taxa = (cfg.taxa || 0) / 100;
+    const fat = (cfg.fat && cfg.fat[mes]) || {};
+    const devs = new Map();
+    const get = n => { let o = devs.get(n); if (!o) devs.set(n, o = { n, devido: 0, pago: 0, dias: {}, qtd: 0 }); return o; };
+    const cartoes = new Map(); let dinheiro = 0;
+    for (const i of inst) {
+      const o = get(i.c.d); o.devido += i.v; o.qtd++;
+      const dia = Number(i.venc.slice(8, 10)); o.dias[dia] = (o.dias[dia] || 0) + i.v;
+      const meio = meioDe(cfg, i.c.m);
+      if (meio && meio.t === 'cartao') cartoes.set(i.c.m, (cartoes.get(i.c.m) || 0) + i.v);
+      else dinheiro += i.v;
+    }
+    let recebido = 0;
+    const pagsMes = pags.filter(p => p.f === mes);
+    for (const p of pagsMes) { get(p.d).pago += p.v; recebido += p.v; }
+    const linhas = [...devs.values()].map(o => {
+      const saldo = o.devido - o.pago;
+      return { ...o, saldo, comTaxa: o.devido * (1 + taxa) - o.pago, status: Math.abs(saldo) <= 0.01 ? 'quitado' : saldo < 0 ? 'credito' : (o.pago > 0 ? 'parcial' : 'aberto') };
+    }).sort((a, b) => a.n.localeCompare(b.n, 'pt-BR'));
+    const euLinha = linhas.find(l => l.n === eu) || { devido: 0, pago: 0, saldo: 0 };
+    const terceiros = linhas.filter(l => l.n !== eu);
+    const aReceber = terceiros.reduce((s, l) => s + Math.max(0, l.saldo), 0);
+
+    const cobr = (cfg.cobr || []).map(c => { const dt = dataCobranca(cfg, c, mes); return { ...c, data: dt, status: hoje < dt ? 'a cobrar' : 'cobrado' }; });
+    const faturas = cfg.meios.filter(m => m.t === 'cartao').map(m => {
+      const calc = cartoes.get(m.n) || 0;
+      const inf = fat[m.n] || {};
+      const pend = cobr.filter(c => c.m === m.n && c.status === 'a cobrar').reduce((s, c) => s + c.v, 0);
+      const informado = inf.i ?? null, pago = inf.p ?? 0;
+      let dif = null;
+      if (informado !== null) dif = Math.abs(informado - pago) < 0.005 && pago > 0 ? 0 : calc - informado - pend - pago;
+      return { meio: m, calc, informado, pago, pend, dif };
+    });
+    const calcCartoes = faturas.reduce((s, f) => s + f.calc, 0);
+    const faturasTotal = faturas.reduce((s, f) => s + (f.informado || 0) + f.pend, 0);
+    const dinRecebido = (fat.Dinheiro && fat.Dinheiro.p) || 0;
+    const totalLancado = calcCartoes + dinheiro;
+    const sobra = euLinha.devido + aReceber - faturasTotal;
+    return {
+      mes, linhas, terceiros, eu: euLinha, aReceber, recebido, pagsMes, cobr, faturas,
+      dinheiro: { calc: dinheiro, recebido: dinRecebido, falta: dinheiro - dinRecebido },
+      totalLancado, calcCartoes, faturasTotal, sobra,
+      sobraMaisRecebido: sobra + recebido,
+      difFaturas: calcCartoes - faturasTotal,
+      samuel: totalLancado - aReceber,
+      cobrTotal: cobr.reduce((s, c) => s + (c.v || 0), 0),
+    };
+  }
+
+  function saldoDevedor(idx, pags, nome, mes) {
+    const devido = (idx.get(mes) || []).filter(i => i.c.d === nome).reduce((s, i) => s + i.v, 0);
+    const pago = pags.filter(p => p.d === nome && p.f === mes).reduce((s, p) => s + p.v, 0);
+    return { devido, pago, saldo: devido - pago };
+  }
+
+  /* ===== Planejamento ===== */
+  function planejamento(cfg, mes, hoje = todayISO()) {
+    const P = cfg.plan;
+    const aj = P.ajuda;
+    const ajuda = aj.tDias * aj.tDia + aj.aDias * aj.aDia;
+    const cobrV = id => ((cfg.cobr || []).find(c => c.id === id) || {}).v || 0;
+    const salario = P.emp.fat - P.emp.gastos;
+    const base = it => {
+      if (it.fx === 'dieta') return (P.dietaLimite || 0) - ajuda;
+      if (it.fx === 'das') return P.emp.fat * (it.b || 0) / 100;
+      if (it.lk) return cobrV(it.lk.c) / (it.lk.div || 1);
+      return (it.b || 0) * (1 + (it.r || 0) / 100);
+    };
+    const fator = it => it.q[0] === 'c' ? 1 / (it.q[1] || 1) : (it.q[1] || 0);
+    const itens = P.itens.map(it => ({ ...it, valor: base(it), fator: fator(it) }));
+    // imprevistos = gastos da empresa − demais itens da empresa
+    const empOutros = itens.filter(i => i.emp && i.fx !== 'imprevistos').reduce((s, i) => s + i.valor * i.fator, 0);
+    for (const i of itens) if (i.fx === 'imprevistos') i.valor = P.emp.gastos - empOutros;
+    for (const i of itens) { i.calc = i.valor * i.fator; i.mensal = i.mn != null ? i.mn : i.calc; }
+    const pessoais = itens.filter(i => !i.emp);
+    const custoVida = pessoais.reduce((s, i) => s + i.mensal, 0);
+    const empresa = itens.filter(i => i.emp);
+
+    const ap = apTabela(P.ap);
+    const apMes = m => ap.linhas.find(l => l.mes === m) || { e: 0, d: 0, s: 0, total: 0 };
+    const apSel = apMes(mes);
+    const invest = P.invest.reduce((s, x) => s + (x.v || 0), 0);
+    const outros = P.outros.reduce((s, x) => s + (x.v || 0), 0);
+
+    const cx = new Map();
+    const addCx = (n, v, tipo) => { const o = cx.get(n) || { n, v: 0, tipo }; o.v += v; cx.set(n, o); };
+    for (const i of pessoais) addCx(i.cx || 'Sem caixinha', i.mensal, 'custo');
+    addCx(P.ap.cxES, apSel.e + apSel.s, 'custo');
+    addCx(P.ap.cxD, apSel.d, 'custo');
+    for (const x of P.outros) addCx(x.n, x.v || 0, 'outros');
+    for (const x of P.invest) addCx(x.n, x.v || 0, 'invest');
+    const caixinhas = [...cx.values()];
+    const totalCx = caixinhas.reduce((s, c) => s + c.v, 0);
+
+    const receita = salario + ajuda + (P.extra || 0);
+    const gastos = custoVida + invest + outros + apSel.total;
+
+    const res = P.res;
+    const acumulado = res.contas.reduce((s, c) => s + (c.v || 0), 0);
+    const alvo = Math.ceil((res.meses * custoVida) / 1000) * 1000;
+    const falta = alvo - acumulado;
+    const mesesFaltam = falta <= 0 ? 0 : (res.aporte > 0 ? Math.ceil(falta / res.aporte) : null);
+
+    // saldo mínimo esperado hoje (mês corrente)
+    const diaHoje = Number(hoje.slice(8, 10));
+    const apHoje = apMes(hoje.slice(0, 7));
+    const saldoItens = pessoais.filter(i => i.cx === P.ap.cxES);
+    const saldoCx = saldoItens.reduce((s, i) => s + i.mensal, 0) + apHoje.e + apHoje.s;
+    const jaPagos = saldoItens.filter(i => i.dia && i.dia <= diaHoje).reduce((s, i) => s + i.mensal, 0);
+    const saldoMin = saldoCx - jaPagos - (diaHoje >= P.ap.dia ? apHoje.e + apHoje.s : 0);
+    const necessario = totalCx + saldoMin;
+
+    return { itens, pessoais, empresa, custoVida, ajuda, salario, receita, gastos, sobra: receita - gastos,
+      invest, outros, apSel, ap, caixinhas, totalCx,
+      reserva: { alvo, acumulado, falta, mesesFaltam },
+      saldoMin, saldoCx, necessario, difSaldo: (P.saldoInf || 0) - necessario };
+  }
+
+  function apTabela(A) {
+    const meses = Object.keys(A.meses).sort();
+    if (!meses.length) return { linhas: [], taxaE: 0, taxaS: 0 };
+    const var_ = (campo, desde) => {
+      const xs = [];
+      for (let i = 1; i < meses.length; i++) {
+        const m = meses[i], p = meses[i - 1];
+        if (m < desde || monthDiff(p, m) !== 1) continue;
+        const a = A.meses[p][campo], b = A.meses[m][campo];
+        if (a > 0 && b != null) xs.push((b - a) / a);
+      }
+      if (!xs.length) return 0;
+      return A.metodo === 'media' ? xs.reduce((s, x) => s + x, 0) / xs.length : Math.max(...xs);
+    };
+    const taxaE = var_('e', A.desdeE || meses[0]);
+    const taxaS = var_('s', A.desdeS || meses[0]);
+    const linhas = [];
+    let m = meses[0]; let prevE = 0, prevS = 0;
+    const fim = A.ate > meses[meses.length - 1] ? A.ate : meses[meses.length - 1];
+    while (m <= fim) {
+      const a = A.meses[m] || {};
+      const e = a.e != null ? a.e : prevE * (1 + taxaE);
+      const s = a.s != null ? a.s : prevS * (1 + taxaS);
+      const d = a.d != null ? a.d : 0;
+      linhas.push({ mes: m, e, d, s, total: e + d + s, real: { e: a.e != null, d: a.d != null, s: a.s != null } });
+      prevE = e; prevS = s; m = addMonths(m, 1);
+    }
+    return { linhas, taxaE, taxaS };
+  }
+
+  return { r2, pad, ym, addMonths, daysIn, dateIn, monthDiff, todayISO, meioDe, vencimento, gerarParcelas, indexar, resumo, saldoDevedor, dataCobranca, planejamento, apTabela };
+})();
+
+
+</script>
+<script>
+/* ===== Interface ===== */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const FMT = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const brl = v => FMT.format(Math.abs(v) < 0.005 ? 0 : (v || 0));
+const numBR = v => (v == null || v === '') ? '' : new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 }).format(v);
+const parseNum = s => {
+  if (s == null) return NaN;
+  s = String(s).trim().replace(/\s|R\$/g, '');
+  if (s === '') return NaN;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  return Number(s);
+};
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const mesNome = m => MESES[Number(m.slice(5, 7)) - 1];
+const mesCurto = m => mesNome(m).slice(0, 3) + '/' + m.slice(2, 4);
+const dataBR = d => d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '';
+const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const pagLonge = p => { const d = Core.monthDiff(p.dt.slice(0, 7), p.f); return d < -3 || d > 12; };
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+const ICON = {
+  resumo: '<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>',
+  devedores: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.6.8 2.7 2.6 3 5.2"/>',
+  lancamentos: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>',
+  pagamentos: '<path d="M12 3v18M17 7.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2 2.7 5 3.5 5 1.6 5 3.5-2.2 3-5 3-5-1.1-5-3"/>',
+  planejamento: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2.5v3M16 2.5v3M7 13h4M7 17h7"/>',
+  ajustes: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  left: '<path d="M15 18l-6-6 6-6"/>', right: '<path d="M9 18l6-6-6-6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
+  cal: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/>',
+};
+const ico = (n, t = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>${t}`;
+const VIEWS = [['resumo', 'Resumo'], ['devedores', 'Devedores'], ['lancamentos', 'Lançamentos'], ['pagamentos', 'Pagamentos'], ['planejamento', 'Planejamento'], ['ajustes', 'Ajustes']];
+
+const DEFAULT_CFG = () => ({
+  eu: 'Eu', taxa: 5, devs: [{ n: 'Eu', a: true }], cobr: [], fat: {},
+  meios: [
+    { n: 'Nubank', t: 'cartao', f: 8, v: 15, x: 0, cor: '#820AD1' },
+    { n: 'Inter', t: 'cartao', f: 8, v: 15, x: 0, cor: '#F07A00' },
+    { n: 'Dinheiro', t: 'dinheiro', v: 15, cor: '#3F8F4E' }],
+  plan: { itens: [], dietaLimite: 0, outros: [], invest: [], ajuda: { tDias: 0, tDia: 0, aDias: 0, aDia: 0 }, extra: 0, emp: { fat: 0, gastos: 0 },
+    res: { aporte: 0, meses: 6, contas: [] }, ap: { dia: 20, meses: {}, ate: Core.addMonths(Core.todayISO().slice(0, 7), 12), metodo: 'maior', cxES: 'Saldo em conta', cxD: 'Compra 1 parcela' }, saldoInf: 0 },
+});
+
+/* ===== Estado ===== */
+const S = {
+  cfg: null, compras: [], pags: [], idx: new Map(),
+  view: 'resumo', mes: Core.todayISO().slice(0, 7),
+  devSel: null, devModo: 'mes', soAberto: false,
+  lf: { q: '', d: '', m: '', st: 'aberto', lim: 80 },
+  pf: { d: '', per: 'mes', q: '' },
+  ready: false,
+};
+try {
+  const p = JSON.parse(localStorage.getItem('caderneta-ui') || '{}');
+  if (p.mes) S.mes = p.mes; if (p.view) S.view = p.view; if (p.devSel) S.devSel = p.devSel;
+} catch (e) { }
+const saveUI = () => { try { localStorage.setItem('caderneta-ui', JSON.stringify({ mes: S.mes, view: S.view, devSel: S.devSel })); } catch (e) { } };
+const reindex = () => { S.idx = Core.indexar(S.compras); };
+const devsAtivos = () => S.cfg.devs.filter(d => d.a).map(d => d.n);
+const devsTodos = () => S.cfg.devs.map(d => d.n);
+const meioCor = n => (Core.meioDe(S.cfg, n) || {}).cor || '#888';
+
+
+/* ===== Utilidades de UI ===== */
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2200); }
+function stamp(st, big) {
+  const txt = { quitado: 'Quitado', aberto: 'Em aberto', parcial: 'Parcial', credito: 'Crédito' }[st] || st;
+  return `<span class="stamp ${st}${big ? ' big' : ''}">${txt}</span>`;
+}
+const cls = v => Math.abs(v) < 0.005 ? '' : v > 0 ? 'owed' : 'credit';
+function getPath(o, p) { return p.split('.').reduce((a, k) => a == null ? a : a[k], o); }
+function setPath(o, p, v) { const ks = p.split('.'); const last = ks.pop(); const t = ks.reduce((a, k) => (a[k] ??= {}), o); t[last] = v; }
+const inp = (path, type = 'num', extra = '') => {
+  const v = getPath(S.cfg, path);
+  const val = type === 'num' || type === 'numnull' ? numBR(v) : (v ?? '');
+  const cl = type.startsWith('num') || type === 'int' ? 'num' : '';
+  return `<input class="${cl}" data-bind="${path}" data-type="${type}" value="${esc(val)}" ${type.startsWith('num') ? 'inputmode="decimal"' : type === 'int' ? 'inputmode="numeric"' : ''} ${extra}>`;
+};
+
+function confirmar(msg, ok = 'Excluir') {
+  return new Promise(res => {
+    const d = $('#conf');
+    d.innerHTML = `<form method="dialog"><div class="dlg-head"><h2>Confirmar</h2></div><div class="dlg-body"><p class="full" style="margin:0">${esc(msg)}</p></div>
+      <div class="dlg-foot"><button class="btn" value="n">Cancelar</button><button class="btn primary" value="s">${esc(ok)}</button></div></form>`;
+    d.onclose = () => res(d.returnValue === 's');
+    d.showModal();
+  });
+}
+
+async function salvarArquivo(nome, dados) {
+  try {
+    const dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
+    if (dl) { await dl.save({ filename: nome, data: dados }); toast('Arquivo salvo'); return; }
+  } catch (e) { if (e && e.code === 'declined') return; console.warn(e); }
+  // alternativa: copiar
+  mostrarTexto('Copie o conteúdo', 'Não foi possível baixar o arquivo aqui. Copie o conteúdo abaixo e salve como ' + nome + '.', dados);
+}
+function mostrarTexto(titulo, sub, texto) {
+  const d = $('#dlg');
+  d.innerHTML = `<form method="dialog"><div class="dlg-head"><h2>${esc(titulo)}</h2><button class="icon-btn" value="x" aria-label="Fechar">✕</button></div>
+  <div class="dlg-body"><p class="full small muted" style="margin:0">${esc(sub)}</p><textarea class="full" rows="12" style="width:100%;border:1px solid var(--rule);border-radius:6px;padding:8px;background:var(--sheet-2)" readonly>${esc(texto)}</textarea></div>
+  <div class="dlg-foot"><button class="btn primary" type="button" data-copy>${ico('copy', 'Copiar')}</button></div></form>`;
+  d.showModal();
+  const ta = $('textarea', d); ta.select();
+  $('[data-copy]', d).onclick = async () => {
+    ta.select();
+    try { await navigator.clipboard.writeText(texto); toast('Copiado'); }
+    catch (e) { try { document.execCommand('copy'); toast('Copiado'); } catch (e2) { toast('Selecione e copie manualmente'); } }
+  };
+}
+
+/* ===== Shell ===== */
+function shell() {
+  const nav = VIEWS.map(([k, t]) => `<button class="nav-btn" data-view="${k}" ${S.view === k ? 'aria-current="page"' : ''}>${ico(k)}<span>${t}</span></button>`).join('');
+  const navMob = VIEWS.filter(v => v[0] !== 'ajustes').map(([k, t]) => `<button class="nav-btn" data-view="${k}" ${S.view === k ? 'aria-current="page"' : ''}>${ico(k)}<span>${t}</span></button>`).join('');
+  $('#app').innerHTML = `
+  <aside class="rail"><div class="brand">Caderneta<small>Cartões e empréstimos</small></div>${nav}<div class="save-state" id="save-state"></div></aside>
+  <main>
+    <header class="top">
+      <div class="month">
+        <button class="icon-btn" data-act="mes-" aria-label="Mês anterior">${ico('left')}</button>
+        <h1 id="mes-titulo"></h1>
+        <button class="icon-btn" data-act="mes+" aria-label="Próximo mês">${ico('right')}</button>
+        <button class="icon-btn" data-act="mes-hoje" aria-label="Voltar ao mês atual" title="Mês atual">${ico('cal')}</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn" data-act="novo-pag">${ico('plus')}<span class="act-label">Pagamento</span></button>
+      <button class="btn primary" data-act="nova-compra">${ico('plus')}<span class="act-label">Compra</span></button>
+      <button class="icon-btn mob-only" data-view="ajustes" aria-label="Ajustes" style="${matchMedia('(max-width:900px)').matches ? '' : 'display:none'}">${ico('ajustes')}</button>
+    </header>
+    <div id="view"></div>
+  </main>
+  <nav class="tabs">${navMob}</nav>`;
+  status();
+}
+function render() {
+  if (!S.ready) return;
+  const active = document.activeElement;
+  const focusBind = active && active.dataset ? active.dataset.bind || active.dataset.focus : null;
+  $$('[data-view]').forEach(b => { if (b.dataset.view !== S.view) b.removeAttribute('aria-current'); else b.setAttribute('aria-current', 'page'); });
+  $('#mes-titulo').innerHTML = `${cap(mesNome(S.mes))}<span>${S.mes.slice(0, 4)}</span>`;
+  const v = { resumo: vResumo, devedores: vDevedores, lancamentos: vLancamentos, pagamentos: vPagamentos, planejamento: vPlanejamento, ajustes: vAjustes }[S.view];
+  $('#view').innerHTML = v();
+  if (focusBind) { const el = $(`[data-bind="${CSS.escape(focusBind)}"], [data-focus="${CSS.escape(focusBind)}"]`); if (el) { el.focus(); if (el.select && el.tagName === 'INPUT') el.select(); } }
+  saveUI();
+}
+
+/* ===== Resumo ===== */
+function vResumo() {
+  const R = Core.resumo(S.cfg, S.idx, S.pags, S.mes);
+  const taxa = S.cfg.taxa || 0;
+  let linhas = R.terceiros;
+  if (S.soAberto) linhas = linhas.filter(l => l.status !== 'quitado');
+  const dias = [...new Set(R.linhas.flatMap(l => Object.keys(l.dias).map(Number)))].sort((a, b) => a - b);
+  const tot = k => linhas.reduce((s, l) => s + l[k], 0);
+  const devRows = linhas.map(l => `<tr class="click" data-dev="${esc(l.n)}"><td><b>${esc(l.n)}</b></td>
+    <td class="n">${brl(l.devido)}</td><td class="n paid">${l.pago ? brl(l.pago) : '—'}</td><td class="n ${cls(l.saldo)}"><b>${brl(l.saldo)}</b></td>
+    <td class="n">${brl(l.comTaxa)}</td>${dias.map(d => `<td class="n muted">${l.dias[d] ? brl(l.dias[d]) : '—'}</td>`).join('')}<td>${stamp(l.status)}</td></tr>`).join('');
+  const eu = R.linhas.find(l => l.n === S.cfg.eu);
+
+  const fatRows = R.faturas.filter(f => f.calc || f.informado != null || S.cfg.fat?.[S.mes]?.[f.meio.n]).map(f => {
+    const difCls = f.dif == null ? 'muted' : Math.abs(f.dif) > 1 ? 'owed' : 'paid';
+    return `<tr><td><span class="dot" style="background:${f.meio.cor}"></span><b>${esc(f.meio.n)}</b> <span class="muted small">vence ${String(f.meio.v).padStart(2, '0')}</span></td>
+    <td class="n">${brl(f.calc)}</td>
+    <td class="n" style="width:130px">${inp(`fat.${S.mes}.${f.meio.n}.i`, 'numnull', 'placeholder="valor no app"')}</td>
+    <td class="n">${f.pend ? brl(f.pend) : '—'}</td>
+    <td class="n" style="width:120px">${inp(`fat.${S.mes}.${f.meio.n}.p`, 'num', 'placeholder="0,00"')}</td>
+    <td class="n ${difCls}" title="Calculado − informado − assinaturas a cobrar − pago">${f.dif == null ? '—' : brl(f.dif)}</td></tr>`;
+  }).join('');
+
+  // próximos 6 meses
+  const prox = Array.from({ length: 6 }, (_, i) => {
+    const m = Core.addMonths(S.mes, i);
+    const r = Core.resumo(S.cfg, S.idx, S.pags, m);
+    return { m, v: r.terceiros.reduce((s, l) => s + Math.max(0, l.saldo), 0), eu: r.eu.devido };
+  });
+  const mx = Math.max(1, ...prox.map(p => p.v + p.eu));
+  const barras = prox.map((p, i) => {
+    const x = i * 100 + 20, h1 = p.v / mx * 120, h2 = p.eu / mx * 120;
+    return `<g><rect x="${x}" y="${150 - h1}" width="60" height="${h1}" fill="var(--owed)" rx="2"><title>A receber ${brl(p.v)}</title></rect>
+      <rect x="${x}" y="${150 - h1 - h2}" width="60" height="${Math.max(0, h2 - 1)}" fill="var(--ink-3)" opacity=".45" rx="2"><title>Sua parte ${brl(p.eu)}</title></rect>
+      <text x="${x + 30}" y="${145 - h1 - h2}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)">${Math.round(p.v).toLocaleString('pt-BR')}</text>
+      <text x="${x + 30}" y="170" text-anchor="middle" font-size="12" fill="var(--ink-2)">${mesCurto(p.m)}</text></g>`;
+  }).join('');
+
+  let saldoMin = null;
+  try { if (S.cfg.plan) saldoMin = Core.planejamento(S.cfg, S.mes).saldoMin; } catch (e) { }
+
+  return `
+  <div class="ledger-head">
+    <div class="big"><div class="lbl">A receber em ${mesNome(S.mes)}</div><div class="val">${brl(R.aReceber)}</div><div class="hint">${R.terceiros.filter(l => l.saldo > 0.01).length} pessoas com saldo em aberto</div></div>
+    <div><div class="lbl">Já recebido</div><div class="val paid">${brl(R.recebido)}</div><div class="hint">${R.pagsMes.length} pagamentos</div></div>
+    <div><div class="lbl">Sua parte</div><div class="val">${brl(R.eu.devido)}</div><div class="hint">gastos de ${esc(S.cfg.eu)}</div></div>
+    <div><div class="lbl">Total lançado</div><div class="val">${brl(R.totalLancado)}</div><div class="hint">cartões + dinheiro</div></div>
+  </div>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Quem deve em ${mesNome(S.mes)}</h2><p>Soma todas as parcelas do mês, qualquer dia de vencimento. Toque em um nome para ver o detalhe.</p><div class="spacer"></div>
+      <label class="small"><input type="checkbox" data-act="so-aberto" ${S.soAberto ? 'checked' : ''}> Só em aberto</label></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Devedor</th><th class="n">Valor do mês</th><th class="n">Pago</th><th class="n">Falta</th><th class="n">Com ${numBR(taxa)}%</th>${dias.map(d => `<th class="n">Dia ${d}</th>`).join('')}<th>Situação</th></tr></thead>
+      <tbody>${devRows || `<tr><td colspan="${6 + dias.length}" class="empty">Nenhuma parcela de terceiros neste mês.</td></tr>`}</tbody>
+      <tfoot><tr><td>Total</td><td class="n">${brl(tot('devido'))}</td><td class="n">${brl(tot('pago'))}</td><td class="n">${brl(tot('saldo'))}</td><td class="n">${brl(tot('comTaxa'))}</td>${dias.map(d => `<td class="n">${brl(linhas.reduce((s, l) => s + (l.dias[d] || 0), 0))}</td>`).join('')}<td></td></tr>
+      ${eu ? `<tr class="click" data-dev="${esc(eu.n)}"><td style="font-weight:600">${esc(eu.n)} (você)</td><td class="n" style="font-weight:600">${brl(eu.devido)}</td><td></td><td></td><td></td>${dias.map(d => `<td class="n" style="font-weight:500">${eu.dias[d] ? brl(eu.dias[d]) : '—'}</td>`).join('')}<td></td></tr>` : ''}</tfoot>
+    </table></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Conferência das faturas</h2><p>Digite o valor que aparece no app do banco. A diferença considera as assinaturas que ainda vão cair.</p></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Cartão</th><th class="n">Calculado</th><th class="n">Informado</th><th class="n">Assinaturas a cobrar</th><th class="n">Pago</th><th class="n">Diferença</th></tr></thead>
+      <tbody>${fatRows}
+      <tr><td><span class="dot" style="background:${meioCor('Dinheiro')}"></span><b>Dinheiro</b> <span class="muted small">emprestado</span></td><td class="n">${brl(R.dinheiro.calc)}</td><td class="n muted">—</td><td class="n muted">—</td>
+      <td class="n">${inp(`fat.${S.mes}.Dinheiro.p`, 'num', 'placeholder="recebido"')}</td><td class="n ${cls(R.dinheiro.falta)}" title="Esperado − recebido">${brl(R.dinheiro.falta)}</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <div class="grid2">
+    <section class="sec">
+      <div class="sec-head"><h2>Balanço do mês</h2></div>
+      <div class="card"><dl class="kv">
+        <dt>Faturas a pagar<small>informadas + assinaturas a cobrar</small></dt><dd>${brl(R.faturasTotal)}</dd>
+        <dt>Sua parte + a receber</dt><dd>${brl(R.eu.devido + R.aReceber)}</dd>
+        <dt>Sobra<small>(sua parte + a receber) − faturas</small></dt><dd class="${R.sobra < 0 ? 'owed' : ''}">${brl(R.sobra)}</dd>
+        <dt>Sobra + recebido</dt><dd>${brl(R.sobraMaisRecebido)}</dd>
+        <dt>Calculado − faturas<small>cartões lançados vs. faturas</small></dt><dd>${brl(R.difFaturas)}</dd>
+        <dt>Diferença + dinheiro emprestado</dt><dd>${brl(R.difFaturas + R.dinheiro.calc)}</dd>
+        <dt class="tot">Seu custo (total − a receber)</dt><dd class="tot">${brl(R.samuel)}</dd>
+      </dl>
+      ${saldoMin != null ? `<p class="small muted" style="margin:12px 0 0">Saldo mínimo esperado em conta hoje: <b style="color:var(--ink)">${brl(saldoMin)}</b></p>` : ''}</div>
+    </section>
+    <section class="sec">
+      <div class="sec-head"><h2>Próximos 6 meses</h2><p>A receber (laranja) e sua parte (cinza)</p></div>
+      <div class="card"><svg viewBox="0 0 620 180" width="100%" role="img" aria-label="A receber nos próximos meses">${barras}</svg></div>
+    </section>
+  </div>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Cobranças mensais</h2><p>Assinaturas que caem nos cartões. A data é calculada pelo fechamento de cada cartão.</p><div class="spacer"></div><button class="btn small" data-view="ajustes">Editar lista</button></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Cobrança</th><th>Cartão</th><th class="n">Valor</th><th>Data da cobrança</th><th>Situação</th></tr></thead>
+      <tbody>${R.cobr.map(c => `<tr><td>${esc(c.n)}</td><td><span class="dot" style="background:${meioCor(c.m)}"></span>${esc(c.m)}</td><td class="n">${brl(c.v)}</td><td>${dataBR(c.data)}</td><td><span class="chip ${c.status === 'a cobrar' ? 'warn' : ''}">${cap(c.status)}</span></td></tr>`).join('') || '<tr><td colspan="5" class="empty">Nenhuma cobrança cadastrada.</td></tr>'}</tbody>
+      <tfoot><tr><td>Total</td><td></td><td class="n">${brl(R.cobrTotal)}</td><td></td><td></td></tr></tfoot>
+    </table></div>
+  </section>`;
+}
+
+/* ===== Devedores ===== */
+function vDevedores() {
+  const nomes = devsAtivos();
+  const lista = nomes.map(n => { const s = Core.saldoDevedor(S.idx, S.pags, n, S.mes); return { n, ...s }; })
+    .sort((a, b) => (a.n === S.cfg.eu) - (b.n === S.cfg.eu) || b.saldo - a.saldo || a.n.localeCompare(b.n));
+  if (!S.devSel || !devsTodos().includes(S.devSel)) S.devSel = (lista[0] || {}).n;
+  const listHtml = lista.map(d => `<button data-dev="${esc(d.n)}" ${d.n === S.devSel ? 'aria-current="true"' : ''}><span>${esc(d.n)}${d.n === S.cfg.eu ? ' <span class="muted small">(você)</span>' : ''}</span><span class="${cls(d.saldo)}">${Math.abs(d.saldo) < .005 ? '—' : brl(d.saldo)}</span></button>`).join('');
+  const n = S.devSel;
+  if (!n) return `<div class="empty">Cadastre um devedor em Ajustes.</div>`;
+  const modo = S.devModo;
+  const todas = S.compras.filter(c => c.d === n).flatMap(c => c.p.map(p => ({ c, k: p[0], v: p[1], venc: p[2] })));
+  let parc = modo === 'mes' ? todas.filter(i => i.venc.slice(0, 7) === S.mes) : modo === 'aberto' ? todas.filter(i => i.venc.slice(0, 7) >= S.mes) : todas;
+  parc.sort((a, b) => a.venc.localeCompare(b.venc) || a.c.dt.localeCompare(b.c.dt));
+  let pg = S.pags.filter(p => p.d === n);
+  pg = modo === 'mes' ? pg.filter(p => p.f === S.mes) : modo === 'aberto' ? pg.filter(p => p.f >= S.mes) : pg;
+  pg.sort((a, b) => b.dt.localeCompare(a.dt));
+  const soma = a => a.reduce((s, i) => s + i.v, 0);
+  const devido = soma(parc), pago = soma(pg), falta = devido - pago;
+  const uma = soma(parc.filter(i => i.c.n === 1)), mais = soma(parc.filter(i => i.c.n > 1));
+  const uber = soma(parc.filter(i => /uber/i.test(i.c.c)));
+  const st = Math.abs(falta) <= 0.01 ? 'quitado' : falta < 0 ? 'credito' : pago > 0 ? 'parcial' : 'aberto';
+  const taxa = S.cfg.taxa || 0;
+  const strip = Array.from({ length: 6 }, (_, i) => { const m = Core.addMonths(S.mes, i); return { m, ...Core.saldoDevedor(S.idx, S.pags, n, m) }; });
+  const mx = Math.max(1, ...strip.map(s => s.devido));
+  const periodo = modo === 'mes' ? `em ${mesNome(S.mes)}` : modo === 'aberto' ? `de ${mesCurto(S.mes)} em diante` : 'no histórico';
+  const mesesAgrupados = modo !== 'mes';
+
+  let rows = ''; let lastM = '';
+  for (const i of parc) {
+    const m = i.venc.slice(0, 7);
+    if (mesesAgrupados && m !== lastM) { rows += `<tr><td colspan="6" style="background:var(--sheet-2);font-weight:700">${cap(mesNome(m))} ${m.slice(0, 4)} <span class="muted small">· ${brl(parc.filter(x => x.venc.slice(0, 7) === m).reduce((s, x) => s + x.v, 0))}</span></td></tr>`; lastM = m; }
+    rows += `<tr class="click" data-compra="${i.c.i}"><td class="wrap">${esc(i.c.c)}</td><td>${dataBR(i.c.dt)}</td><td><span class="dot" style="background:${meioCor(i.c.m)}"></span>${esc(i.c.m)}</td><td class="n">${i.k}/${i.c.n}</td><td class="n">${brl(i.v)}</td><td>${dataBR(i.venc)}</td></tr>`;
+  }
+  return `<div class="dev-layout">
+    <nav class="dev-list" aria-label="Devedores">${listHtml}</nav>
+    <div>
+      <div class="dev-title"><h2>${esc(n)}</h2>${n !== S.cfg.eu ? stamp(st, true) : ''}<div style="flex:1"></div>
+        <div class="seg" role="group" aria-label="Período">${[['mes', 'Este mês'], ['aberto', 'Daqui pra frente'], ['tudo', 'Tudo']].map(([k, t]) => `<button data-act="devmodo" data-v="${k}" aria-pressed="${modo === k}">${t}</button>`).join('')}</div></div>
+      <div class="ledger-head">
+        <div class="big"><div class="lbl">Falta ${periodo}</div><div class="val ${cls(falta)}" style="${falta <= 0.005 ? 'color:var(--paid)' : ''}">${brl(falta)}</div><div class="hint">com ${numBR(taxa)}%: ${brl(devido * (1 + taxa / 100) - pago)}</div></div>
+        <div><div class="lbl">Parcelas</div><div class="val">${brl(devido)}</div><div class="hint">${parc.length} lançamentos</div></div>
+        <div><div class="lbl">Pago</div><div class="val paid">${brl(pago)}</div><div class="hint">${pg.length} pagamentos</div></div>
+        <div><div class="lbl">À vista / parcelado</div><div class="val" style="font-size:15px;line-height:1.35">${brl(uma)}<br><span class="muted">${brl(mais)}</span></div><div class="hint">${uber ? 'Uber: ' + brl(uber) : 'sem Uber'}</div></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:-12px 0 22px">
+        <button class="btn primary" data-act="cobrar">${ico('copy', 'Copiar cobrança')}</button>
+        <button class="btn" data-act="novo-pag" data-d="${esc(n)}" data-v="${falta > 0 ? Core.r2(falta) : ''}">${ico('plus', 'Registrar pagamento')}</button>
+        <button class="btn" data-act="nova-compra" data-d="${esc(n)}">${ico('plus', 'Nova compra')}</button>
+      </div>
+      <section class="sec"><div class="sec-head"><h3>Próximos meses</h3></div>
+        <div class="months-strip">${strip.map(s => `<button data-act="ir-mes" data-m="${s.m}" class="${s.m === S.mes ? 'cur' : ''}"><div class="m">${mesCurto(s.m)}</div><div class="v ${cls(s.saldo)}">${brl(s.saldo)}</div><div class="bar"><i style="width:${s.devido / mx * 100}%"></i></div></button>`).join('')}</div>
+      </section>
+      <section class="sec"><div class="sec-head"><h3>Parcelas ${periodo}</h3><p>Toque em uma linha para editar a compra.</p></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Compra</th><th>Data</th><th>Meio</th><th class="n">Parcela</th><th class="n">Valor</th><th>Vencimento</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" class="empty">Nenhuma parcela neste período.</td></tr>'}</tbody>
+        <tfoot><tr><td colspan="4">Total</td><td class="n">${brl(devido)}</td><td></td></tr></tfoot></table></div></section>
+      <section class="sec"><div class="sec-head"><h3>Pagamentos ${periodo}</h3></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Data</th><th>Meio</th><th>Fatura</th><th class="n">Valor</th><th></th></tr></thead>
+        <tbody>${pg.map(p => `<tr><td>${dataBR(p.dt)}</td><td>${esc(p.m)}</td><td>${mesCurto(p.f)}</td><td class="n paid">${brl(p.v)}</td><td><div class="row-actions"><button class="btn link" data-act="edit-pag" data-id="${p.i}" aria-label="Editar">${ico('edit')}</button></div></td></tr>`).join('') || '<tr><td colspan="5" class="empty">Nenhum pagamento neste período.</td></tr>'}</tbody>
+        <tfoot><tr><td colspan="3">Total</td><td class="n">${brl(pago)}</td><td></td></tr></tfoot></table></div></section>
+    </div></div>`;
+}
+function textoCobranca() {
+  const n = S.devSel; const m = S.mes;
+  const parc = (S.idx.get(m) || []).filter(i => i.c.d === n).sort((a, b) => a.venc.localeCompare(b.venc));
+  const pago = S.pags.filter(p => p.d === n && p.f === m).reduce((s, p) => s + p.v, 0);
+  const tot = parc.reduce((s, i) => s + i.v, 0);
+  const linhas = parc.map(i => `• ${i.c.c}${i.c.n > 1 ? ` (${i.k}/${i.c.n})` : ''} — ${brl(i.v)}`).join('\n');
+  const venc = parc.length ? dataBR(parc[parc.length - 1].venc) : '';
+  return `Oi, ${n}! Segue o resumo de ${mesNome(m)}/${m.slice(0, 4)}:\n\n${linhas || '(nenhuma parcela)'}\n\nTotal: ${brl(tot)}` +
+    (pago ? `\nJá pago: ${brl(pago)}\nFalta: ${brl(tot - pago)}` : '') + (venc ? `\nVencimento: ${venc}` : '');
+}
+
+/* ===== Lançamentos ===== */
+function vLancamentos() {
+  const f = S.lf; const q = f.q.trim().toLowerCase();
+  let cs = S.compras.filter(c => (!f.d || c.d === f.d) && (!f.m || c.m === f.m) && (!q || c.c.toLowerCase().includes(q)));
+  const ultimo = c => c.p.length ? c.p[c.p.length - 1][2].slice(0, 7) : '';
+  if (f.st === 'aberto') cs = cs.filter(c => ultimo(c) >= S.mes);
+  if (f.st === 'mes') cs = cs.filter(c => c.p.some(p => p[2].slice(0, 7) === S.mes));
+  if (f.st === 'quitado') cs = cs.filter(c => ultimo(c) < S.mes);
+  cs.sort((a, b) => b.dt.localeCompare(a.dt) || a.d.localeCompare(b.d));
+  const total = cs.reduce((s, c) => s + c.p.filter(p => p[2].slice(0, 7) >= S.mes).reduce((x, p) => x + p[1], 0), 0);
+  const itens = cs.slice(0, f.lim).map(c => {
+    const rest = c.p.filter(p => p[2].slice(0, 7) >= S.mes);
+    const prox = rest[0];
+    const ks = c.p.map(p => p[0]);
+    const faixa = ks.length ? (Math.min(...ks) === Math.max(...ks) ? `${ks[0]}` : `${Math.min(...ks)}–${Math.max(...ks)}`) : '';
+    const pagas = c.p.length - rest.length;
+    return `<div class="item click" data-compra="${c.i}" role="button" tabindex="0">
+      <div style="min-width:0"><div class="t">${esc(c.c) || '<span class="muted">(sem descrição)</span>'}</div>
+      <div class="meta"><b style="color:var(--ink-2)">${esc(c.d)}</b> · <span class="dot" style="background:${meioCor(c.m)}"></span>${esc(c.m)} · ${dataBR(c.dt)} · parcelas ${faixa} de ${c.n}</div></div>
+      <div class="amt">${brl(c.v)}<div class="meta">${prox ? `próx. ${dataBR(prox[2])} · ${brl(prox[1])}` : 'quitada'}</div></div>
+      <div class="prog"><i style="width:${c.p.length ? pagas / c.p.length * 100 : 100}%"></i></div></div>`;
+  }).join('');
+  const opt = (arr, sel, todos) => `<option value="">${todos}</option>` + arr.map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  return `<section class="sec">
+    <div class="sec-head"><h2>Lançamentos</h2><p>Cada compra aparece uma vez; as parcelas são geradas automaticamente.</p></div>
+    <div class="filters">
+      <input type="search" placeholder="Buscar compra" data-lf="q" data-focus="lf-q" value="${esc(f.q)}" style="flex:1;min-width:160px">
+      <select data-lf="d" aria-label="Devedor">${opt(devsTodos(), f.d, 'Todos os devedores')}</select>
+      <select data-lf="m" aria-label="Meio">${opt(S.cfg.meios.map(m => m.n), f.m, 'Todos os meios')}</select>
+      <div class="seg">${[['aberto', 'Em aberto'], ['mes', 'Neste mês'], ['quitado', 'Quitadas'], ['todas', 'Todas']].map(([k, t]) => `<button data-act="lf-st" data-v="${k}" aria-pressed="${f.st === k}">${t}</button>`).join('')}</div>
+    </div>
+    <p class="small muted" style="margin:0 0 8px">${cs.length} compras · a pagar de ${mesCurto(S.mes)} em diante: <b style="color:var(--ink)">${brl(total)}</b></p>
+    <div class="tbl-wrap lanc-list">${itens || '<div class="empty">Nenhuma compra encontrada.</div>'}</div>
+    ${cs.length > f.lim ? `<p style="text-align:center"><button class="btn" data-act="lf-mais">Mostrar mais (${cs.length - f.lim})</button></p>` : ''}
+  </section>`;
+}
+
+/* ===== Pagamentos ===== */
+function vPagamentos() {
+  const f = S.pf;
+  let ps = S.pags.filter(p => (!f.d || p.d === f.d) && (f.per === 'todos' || p.f === S.mes));
+  ps.sort((a, b) => b.dt.localeCompare(a.dt));
+  const tot = ps.reduce((s, p) => s + p.v, 0);
+  const opt = devsTodos().map(x => `<option ${x === f.d ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  const porDev = {};
+  ps.forEach(p => porDev[p.d] = (porDev[p.d] || 0) + p.v);
+  return `<section class="sec">
+    <div class="sec-head"><h2>Pagamentos recebidos</h2><p>Cada pagamento abate a fatura do mês indicado.</p></div>
+    <div class="filters">
+      <select data-pf="d" aria-label="Devedor"><option value="">Todos os devedores</option>${opt}</select>
+      <div class="seg">${[['mes', `Fatura de ${mesCurto(S.mes)}`], ['todos', 'Todos']].map(([k, t]) => `<button data-act="pf-per" data-v="${k}" aria-pressed="${f.per === k}">${t}</button>`).join('')}</div>
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>Data</th><th>Devedor</th><th>Meio</th><th>Fatura</th><th class="n">Valor</th><th></th></tr></thead>
+    <tbody>${ps.map(p => {
+      const longe = pagLonge(p);
+      return `<tr><td>${dataBR(p.dt)}</td><td><b>${esc(p.d)}</b></td><td>${esc(p.m)}</td><td>${mesCurto(p.f)} ${longe ? '<span class="chip warn" title="Data do pagamento distante do mês da fatura">confira</span>' : ''}</td><td class="n paid">${brl(p.v)}</td>
+      <td><div class="row-actions"><button class="btn link" data-act="edit-pag" data-id="${p.i}" aria-label="Editar">${ico('edit')}</button><button class="btn link danger" data-act="del-pag" data-id="${p.i}" aria-label="Excluir">${ico('trash')}</button></div></td></tr>`;
+    }).join('') || '<tr><td colspan="6" class="empty">Nenhum pagamento. Use “Pagamento” no topo para registrar.</td></tr>'}</tbody>
+    <tfoot><tr><td colspan="4">Total (${ps.length})</td><td class="n">${brl(tot)}</td><td></td></tr></tfoot></table></div>
+  </section>
+  ${Object.keys(porDev).length > 1 ? `<section class="sec"><div class="sec-head"><h3>Por devedor</h3></div><div class="card"><dl class="kv">${Object.entries(porDev).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${brl(v)}</dd>`).join('')}</dl></div></section>` : ''}`;
+}
+
+/* ===== Planejamento ===== */
+function vPlanejamento() {
+  const P = S.cfg.plan; const R = Core.planejamento(S.cfg, S.mes);
+  const cxs = [...new Set(P.itens.map(i => i.cx).filter(Boolean).concat([P.ap.cxES, P.ap.cxD]))];
+  const freqSel = (i) => `<select data-bind="plan.itens.${i}.q.0" data-type="text" style="min-width:125px"><option value="v" ${P.itens[i].q[0] === 'v' ? 'selected' : ''}>× por mês</option><option value="c" ${P.itens[i].q[0] === 'c' ? 'selected' : ''}>a cada n meses</option></select>`;
+  const itemRow = (it) => {
+    const i = P.itens.findIndex(x => x.id === it.id);
+    let baseCell;
+    if (it.fx === 'dieta') baseCell = `<span class="small muted">limite ${inp('plan.dietaLimite', 'num', 'style="width:80px;display:inline-block"')} − ajuda</span>`;
+    else if (it.fx === 'das') baseCell = `<span class="small muted">${inp(`plan.itens.${i}.b`, 'num', 'style="width:60px;display:inline-block"')}% do faturamento</span>`;
+    else if (it.fx === 'imprevistos') baseCell = `<span class="small muted">gastos − demais itens</span>`;
+    else if (it.lk) baseCell = `<span class="small muted" style="display:flex;gap:4px;align-items:center"><select data-bind="plan.itens.${i}.lk.c" data-type="text" style="min-width:150px">${(S.cfg.cobr || []).map(c => `<option value="${c.id}" ${c.id === it.lk.c ? 'selected' : ''}>${esc(c.n)}</option>`).join('')}</select> ÷ ${inp(`plan.itens.${i}.lk.div`, 'int', 'style="width:44px"')}</span>`;
+    else baseCell = inp(`plan.itens.${i}.b`);
+    const manual = it.mn != null;
+    return `<tr>
+      <td>${inp(`plan.itens.${i}.n`, 'text', 'style="min-width:200px"')}</td>
+      <td>${baseCell}</td>
+      <td style="width:70px">${it.fx || it.lk ? '' : inp(`plan.itens.${i}.r`, 'num', 'placeholder="0"')}</td>
+      <td class="n">${brl(it.valor)}</td>
+      <td style="width:200px"><div style="display:flex;gap:2px">${it.fx === 'imprevistos' ? '' : freqSel(i) + inp(`plan.itens.${i}.q.1`, 'num', 'style="width:52px;min-width:52px"')}</div></td>
+      <td class="n" style="width:130px">${manual ? `<div style="display:flex;align-items:center;gap:2px">${inp(`plan.itens.${i}.mn`, 'numnull')}<button class="btn link" data-act="plan-auto" data-i="${i}" title="Voltar ao cálculo (${brl(it.calc)})">↺</button></div><span class="chip warn">ajustado à mão</span>` : `<b>${brl(it.mensal)}</b> <button class="btn link small" data-act="plan-manual" data-i="${i}" title="Definir valor mensal à mão">${ico('edit')}</button>`}</td>
+      ${it.emp ? '' : `<td style="width:60px">${inp(`plan.itens.${i}.dia`, 'intnull', 'placeholder="—"')}</td><td>${inp(`plan.itens.${i}.cx`, 'text', 'list="cx-list" style="min-width:130px"')}</td>`}
+      <td><div class="row-actions">${it.fx ? '' : `<button class="btn link danger" data-act="plan-del" data-i="${i}" aria-label="Excluir">${ico('trash')}</button>`}</div></td></tr>`;
+  };
+  const lista = (key, titulo) => `<div class="card"><h3 style="margin-bottom:6px">${titulo}</h3><table><tbody>${P[key].map((x, i) => `<tr><td>${inp(`plan.${key}.${i}.n`, 'text')}</td><td class="n" style="width:130px">${inp(`plan.${key}.${i}.v`)}</td><td style="width:40px"><button class="btn link danger" data-act="list-del" data-k="plan.${key}" data-i="${i}" aria-label="Excluir">${ico('trash')}</button></td></tr>`).join('')}
+    </tbody><tfoot><tr><td>Total</td><td class="n">${brl(P[key].reduce((s, x) => s + (x.v || 0), 0))}</td><td></td></tr></tfoot></table>
+    <button class="btn small" data-act="list-add" data-k="plan.${key}" style="margin-top:8px">${ico('plus', 'Adicionar')}</button></div>`;
+  const apRows = R.ap.linhas.map(l => {
+    const f = (c) => `<input class="num ${l.real[c] ? '' : 'proj'}" data-ap="${l.mes}.${c}" inputmode="decimal" value="${l.real[c] ? esc(numBR(l[c])) : ''}" placeholder="${esc(numBR(Core.r2(l[c])))}">`;
+    return `<tr class="${l.mes === S.mes ? 'sel' : ''}"><td><b>${mesCurto(l.mes)}</b></td><td class="n">${f('e')}</td><td class="n">${f('d')}</td><td class="n">${f('s')}</td><td class="n"><b>${brl(l.total)}</b></td></tr>`;
+  }).join('');
+  const r = R.reserva;
+  return `
+  <div class="ledger-head">
+    <div class="big"><div class="lbl">Sobra prevista em ${mesNome(S.mes)}</div><div class="val" style="color:${R.sobra >= 0 ? 'var(--paid)' : 'var(--stamp)'}">${brl(R.sobra)}</div><div class="hint">receita − gastos</div></div>
+    <div><div class="lbl">Receita</div><div class="val">${brl(R.receita)}</div><div class="hint">salário + ajuda + extra</div></div>
+    <div><div class="lbl">Gastos</div><div class="val">${brl(R.gastos)}</div><div class="hint">custo de vida + AP + outros</div></div>
+    <div><div class="lbl">Saldo mínimo hoje</div><div class="val">${brl(R.saldoMin)}</div><div class="hint">depois das contas já vencidas</div></div>
+  </div>
+  <datalist id="cx-list">${cxs.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
+
+  <div class="grid2">
+    <section class="sec"><div class="sec-head"><h2>Fluxo de caixa</h2></div><div class="card"><dl class="kv">
+      <dt>Salário<small>faturamento − gastos da empresa</small></dt><dd>${brl(R.salario)}</dd>
+      <dt>Ajuda de custo<small>transporte + alimentação</small></dt><dd>${brl(R.ajuda)}</dd>
+      <dt>Extra</dt><dd style="width:120px">${inp('plan.extra')}</dd>
+      <dt class="tot">Receita</dt><dd class="tot">${brl(R.receita)}</dd>
+      <dt>Custo de vida</dt><dd>${brl(R.custoVida)}</dd>
+      <dt>Investimentos</dt><dd>${brl(R.invest)}</dd>
+      <dt>Outros gastos</dt><dd>${brl(R.outros)}</dd>
+      <dt>Entrada do AP (${mesCurto(S.mes)})</dt><dd>${brl(R.apSel.total)}</dd>
+      <dt class="tot">Gastos</dt><dd class="tot">${brl(R.gastos)}</dd>
+    </dl></div></section>
+    <section class="sec"><div class="sec-head"><h2>Caixinhas do mês</h2><p>Quanto separar para cada destino</p></div><div class="card"><dl class="kv">
+      ${R.caixinhas.filter(c => c.v || c.tipo !== 'custo').map(c => `<dt>${esc(c.n)}${c.n === P.ap.cxES ? '<small>inclui entrada e seguro do AP</small>' : c.n === P.ap.cxD ? '<small>inclui parcela do documento</small>' : ''}</dt><dd>${brl(c.v)}</dd>`).join('')}
+      <dt class="tot">Total</dt><dd class="tot">${brl(R.totalCx)}</dd></dl></div></section>
+  </div>
+
+  <section class="sec"><div class="sec-head"><h2>Custo de vida</h2><p>Total mensal: <b style="color:var(--ink)">${brl(R.custoVida)}</b>. Frequência: “a cada 12 meses” divide o valor por 12.</p><div class="spacer"></div><button class="btn small" data-act="plan-add">${ico('plus', 'Adicionar gasto')}</button></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Gasto</th><th>Valor base</th><th>Reajuste %</th><th class="n">Valor</th><th>Frequência</th><th class="n">Por mês</th><th>Dia venc.</th><th>Caixinha</th><th></th></tr></thead>
+    <tbody>${R.pessoais.map(itemRow).join('')}</tbody>
+    <tfoot><tr><td colspan="5">Total</td><td class="n">${brl(R.custoVida)}</td><td colspan="3"></td></tr></tfoot></table></div></section>
+
+  <div class="grid2">
+    <section class="sec"><div class="sec-head"><h2>Empresa</h2><p>Fora do custo de vida</p></div>
+      <div class="card"><dl class="kv"><dt>Faturamento</dt><dd style="width:130px">${inp('plan.emp.fat')}</dd><dt>Gastos da empresa</dt><dd style="width:130px">${inp('plan.emp.gastos')}</dd><dt class="tot">Distribuição de lucros</dt><dd class="tot">${brl(R.salario)}</dd></dl>
+      <table style="margin-top:10px"><tbody>${R.empresa.map(it => { const i = P.itens.findIndex(x => x.id === it.id); return `<tr><td>${inp(`plan.itens.${i}.n`, 'text')}</td><td>${it.fx === 'das' ? `<span class="small muted">${inp(`plan.itens.${i}.b`, 'num', 'style="width:60px;display:inline-block"')}%</span>` : it.fx === 'imprevistos' ? '<span class="small muted">o que sobra</span>' : inp(`plan.itens.${i}.b`)}</td><td class="n"><b class="${it.mensal < 0 ? 'owed' : ''}">${brl(it.mensal)}</b></td></tr>`; }).join('')}</tbody></table></div></section>
+    <section class="sec"><div class="sec-head"><h2>Ajuda de custo</h2></div>
+      <div class="card"><table><thead><tr><th></th><th class="n">Por dia</th><th class="n">Dias</th><th class="n">Mês</th></tr></thead><tbody>
+      <tr><td>Transporte</td><td>${inp('plan.ajuda.tDia')}</td><td>${inp('plan.ajuda.tDias', 'int')}</td><td class="n">${brl(P.ajuda.tDia * P.ajuda.tDias)}</td></tr>
+      <tr><td>Alimentação</td><td>${inp('plan.ajuda.aDia')}</td><td>${inp('plan.ajuda.aDias', 'int')}</td><td class="n">${brl(P.ajuda.aDia * P.ajuda.aDias)}</td></tr></tbody>
+      <tfoot><tr><td colspan="3">Total</td><td class="n">${brl(R.ajuda)}</td></tr></tfoot></table></div></section>
+  </div>
+
+  <div class="grid2">
+    <section class="sec"><div class="sec-head"><h2>Outros gastos e investimentos</h2></div><div style="display:grid;gap:14px">${lista('outros', 'Outros gastos mensais')}${lista('invest', 'Investimentos')}</div></section>
+    <section class="sec"><div class="sec-head"><h2>Reserva de emergência</h2></div><div class="card">
+      <dl class="kv"><dt>Meses de custo de vida</dt><dd style="width:90px">${inp('plan.res.meses', 'int')}</dd><dt>Aporte mensal</dt><dd style="width:120px">${inp('plan.res.aporte')}</dd>
+      <dt>Meta<small>arredondada para cima (milhar)</small></dt><dd>${brl(r.alvo)}</dd><dt>Guardado</dt><dd class="paid">${brl(r.acumulado)}</dd>
+      <dt class="tot">${r.falta <= 0 ? 'Acima da meta' : 'Falta'}</dt><dd class="tot">${brl(Math.abs(r.falta))}</dd></dl>
+      <p class="small muted">${r.falta <= 0 ? 'Reserva completa.' : r.mesesFaltam == null ? 'Defina um aporte mensal para estimar o prazo.' : `Faltam ${r.mesesFaltam} meses no ritmo atual.`}</p>
+      <h3 style="margin:10px 0 4px">Onde está guardado</h3>
+      <table><tbody>${P.res.contas.map((x, i) => `<tr><td>${inp(`plan.res.contas.${i}.n`, 'text')}</td><td class="n" style="width:130px">${inp(`plan.res.contas.${i}.v`)}</td><td style="width:40px"><button class="btn link danger" data-act="list-del" data-k="plan.res.contas" data-i="${i}" aria-label="Excluir">${ico('trash')}</button></td></tr>`).join('')}</tbody></table>
+      <button class="btn small" data-act="list-add" data-k="plan.res.contas" style="margin-top:8px">${ico('plus', 'Adicionar conta')}</button></div></section>
+  </div>
+
+  <section class="sec"><div class="sec-head"><h2>Entrada do apartamento</h2><p>Valores em itálico são projeções. Digite o valor real quando o boleto chegar.</p></div>
+    <div class="filters">
+      <label class="field">Vence no dia<input data-bind="plan.ap.dia" data-type="int" value="${P.ap.dia}" style="width:70px"></label>
+      <label class="field">Projeção<select data-bind="plan.ap.metodo" data-type="text"><option value="maior" ${P.ap.metodo === 'maior' ? 'selected' : ''}>Maior variação mensal</option><option value="media" ${P.ap.metodo === 'media' ? 'selected' : ''}>Variação média</option></select></label>
+      <label class="field">Projetar até<input type="month" data-bind="plan.ap.ate" data-type="text" value="${P.ap.ate}"></label>
+      <span class="small muted" style="align-self:end">Entrada +${numBR(Core.r2(R.ap.taxaE * 100))}%/mês · Seguro obra +${numBR(Core.r2(R.ap.taxaS * 100))}%/mês</span>
+    </div>
+    <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>Mês</th><th class="n">Parcela entrada</th><th class="n">Parcela documento</th><th class="n">Seguro obra</th><th class="n">Total</th></tr></thead><tbody>${apRows}</tbody></table></div>
+  </section>
+
+  <section class="sec"><div class="sec-head"><h2>Conferência de saldo</h2></div><div class="card" style="max-width:520px"><dl class="kv">
+    <dt>Caixinhas do mês</dt><dd>${brl(R.totalCx)}</dd>
+    <dt>Saldo mínimo esperado hoje<small>conta “${esc(P.ap.cxES)}” menos o que já venceu</small></dt><dd>${brl(R.saldoMin)}</dd>
+    <dt class="tot">Necessário</dt><dd class="tot">${brl(R.necessario)}</dd>
+    <dt>Saldo atual informado</dt><dd style="width:130px">${inp('plan.saldoInf')}</dd>
+    <dt class="tot">Diferença</dt><dd class="tot ${R.difSaldo < 0 ? 'owed' : 'paid'}">${brl(R.difSaldo)}</dd></dl></div></section>`;
+}
+
+/* ===== Ajustes ===== */
+function problemas() {
+  const out = [];
+  const nomes = new Set(devsTodos()); const meios = new Set(S.cfg.meios.map(m => m.n));
+  const semDev = S.compras.filter(c => !nomes.has(c.d)); if (semDev.length) out.push(`${semDev.length} compras com devedor fora da lista: ${[...new Set(semDev.map(c => c.d))].join(', ')}.`);
+  const semMeio = S.compras.filter(c => !meios.has(c.m)); if (semMeio.length) out.push(`${semMeio.length} compras com meio de pagamento fora da lista.`);
+  const zero = S.compras.filter(c => !c.v); if (zero.length) out.push(`${zero.length} compras com valor zero.`);
+  const longe = S.pags.filter(pagLonge); if (longe.length) out.push(`${longe.length} pagamentos com data distante do mês da fatura (veja “confira” em Pagamentos).`);
+  const R = Core.resumo(S.cfg, S.idx, S.pags, S.mes);
+  R.faturas.filter(f => f.dif != null && Math.abs(f.dif) > 1).forEach(f => out.push(`Fatura ${f.meio.n} de ${mesCurto(S.mes)} difere em ${brl(f.dif)} do calculado.`));
+  const inativos = S.cfg.devs.filter(d => !d.a).map(d => d.n).filter(n => (S.idx.get(S.mes) || []).some(i => i.c.d === n)); if (inativos.length) out.push(`Devedores inativos com parcelas neste mês: ${inativos.join(', ')}.`);
+  return out;
+}
+function vAjustes() {
+  const c = S.cfg; const prob = problemas();
+  const usoDev = {}; S.compras.forEach(x => usoDev[x.d] = (usoDev[x.d] || 0) + 1);
+  return `
+  <section class="sec"><div class="sec-head"><h2>Verificação</h2></div>
+    ${prob.length ? prob.map(p => `<div class="notice">${esc(p)}</div>`).join('') : '<div class="card small">Nenhum problema encontrado nos dados.</div>'}</section>
+  <div class="grid2">
+  <section class="sec"><div class="sec-head"><h2>Devedores</h2><p>Inativos somem das listas, mas o histórico fica.</p></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Nome</th><th>Ativo</th><th class="n">Compras</th><th></th></tr></thead><tbody>
+    ${c.devs.map((d, i) => `<tr class="${d.a ? '' : 'dim'}"><td><input data-rename-dev="${esc(d.n)}" value="${esc(d.n)}"></td><td><input type="checkbox" data-bind="devs.${i}.a" data-type="bool" ${d.a ? 'checked' : ''} aria-label="Ativo"></td><td class="n">${usoDev[d.n] || 0}</td>
+    <td>${d.n === c.eu ? '<span class="chip">você</span>' : `<button class="btn link small" data-act="set-eu" data-n="${esc(d.n)}">sou eu</button>`}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="filters" style="margin-top:8px"><input id="novo-dev" placeholder="Nome do novo devedor"><button class="btn" data-act="add-dev">${ico('plus', 'Adicionar')}</button></div>
+  </section>
+  <section class="sec"><div class="sec-head"><h2>Geral</h2></div><div class="card"><dl class="kv">
+    <dt>Taxa sobre o valor do mês (%)<small>coluna “com taxa” do resumo</small></dt><dd style="width:90px">${inp('taxa')}</dd></dl>
+    <h3 style="margin:16px 0 6px">Backup</h3>
+    <p class="small muted" style="margin:0 0 8px">${Store.mode === 'onedrive' ? 'Os dados ficam num arquivo <b>caderneta.json</b> na pasta do aplicativo no seu OneDrive.' : 'Os dados estão salvos só neste aparelho. Conecte o OneDrive para usar em qualquer lugar.'} Exporte um backup de vez em quando.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${Store.mode === 'onedrive'
+      ? `<button class="btn" data-act="sincronizar">Salvar agora no OneDrive</button><button class="btn danger" data-act="desconectar">Desconectar</button>`
+      : `<button class="btn primary" data-act="conectar">Conectar ao OneDrive</button>`}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="exp-json">Exportar backup (.json)</button><button class="btn" data-act="exp-csv">Exportar parcelas (.csv)</button>
+    <label class="btn">Importar backup<input type="file" accept=".json,application/json" id="imp-json" hidden></label></div>
+    ${c.atualizado ? `<p class="small muted">Última gravação: ${new Date(c.atualizado).toLocaleString('pt-BR')}</p>` : ''}</div></section>
+  </div>
+
+  <section class="sec"><div class="sec-head"><h2>Meios de pagamento</h2><p>Compras feitas antes do dia de fechamento entram na fatura que vence no mesmo mês. “Meses extras” empurra o vencimento (Nubank L vence no mês seguinte ao fechamento).</p></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Fechamento</th><th>Vencimento</th><th>Meses extras</th><th>Cor</th><th></th></tr></thead><tbody>
+    ${c.meios.map((m, i) => `<tr><td><input data-rename-meio="${esc(m.n)}" value="${esc(m.n)}"></td>
+      <td><select data-bind="meios.${i}.t" data-type="text"><option value="cartao" ${m.t === 'cartao' ? 'selected' : ''}>Cartão</option><option value="dinheiro" ${m.t !== 'cartao' ? 'selected' : ''}>Dinheiro / Pix</option></select></td>
+      <td>${m.t === 'cartao' ? inp(`meios.${i}.f`, 'int') : '<span class="muted small">—</span>'}</td><td>${inp(`meios.${i}.v`, 'int')}${m.t !== 'cartao' ? '<span class="muted small">dia padrão</span>' : ''}</td>
+      <td>${m.t === 'cartao' ? inp(`meios.${i}.x`, 'int') : ''}</td><td><input type="color" data-bind="meios.${i}.cor" data-type="text" value="${esc(m.cor || '#888888')}" style="width:44px;min-width:44px;padding:0"></td>
+      <td>${S.compras.some(x => x.m === m.n) ? '' : `<button class="btn link danger" data-act="list-del" data-k="meios" data-i="${i}" aria-label="Excluir">${ico('trash')}</button>`}</td></tr>`).join('')}
+    </tbody></table></div>
+    <button class="btn small" data-act="add-meio" style="margin-top:8px">${ico('plus', 'Adicionar meio')}</button>
+    <p class="small muted">Mudar fechamento ou vencimento vale para compras novas ou editadas; as já lançadas mantêm as datas.</p>
+  </section>
+
+  <section class="sec"><div class="sec-head"><h2>Cobranças mensais</h2><p>Assinaturas que caem todo mês nos cartões.</p></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Descrição</th><th class="n">Valor</th><th>Dia</th><th>Cartão</th><th></th></tr></thead><tbody>
+    ${(c.cobr || []).map((x, i) => `<tr><td>${inp(`cobr.${i}.n`, 'text', 'style="min-width:200px"')}</td><td style="width:120px">${inp(`cobr.${i}.v`)}</td><td style="width:70px">${inp(`cobr.${i}.d`, 'int')}</td>
+      <td><select data-bind="cobr.${i}.m" data-type="text">${c.meios.filter(m => m.t === 'cartao').map(m => `<option ${m.n === x.m ? 'selected' : ''}>${esc(m.n)}</option>`).join('')}</select></td>
+      <td><button class="btn link danger" data-act="list-del" data-k="cobr" data-i="${i}" aria-label="Excluir">${ico('trash')}</button></td></tr>`).join('')}
+    </tbody></table></div>
+    <button class="btn small" data-act="add-cobr" style="margin-top:8px">${ico('plus', 'Adicionar cobrança')}</button>
+  </section>`;
+}
+
+/* ===== Diálogos ===== */
+function dlgCompra(id, pre = {}) {
+  const c = id ? S.compras.find(x => x.i === id) : null;
+  const d = $('#dlg');
+  const meios = S.cfg.meios;
+  const v = c ? { d: [c.d], m: c.m, c: c.c, dt: c.dt, total: c.v, n: c.n, ini: Math.min(...c.p.map(p => p[0])), prim: c.p[0] && c.p[0][2] }
+    : { d: pre.d ? [pre.d] : [], m: pre.m || meios[0].n, c: pre.c || '', dt: pre.dt || Core.todayISO(), total: pre.total ?? '', n: pre.n || 1, ini: 1, prim: '' };
+  const devOpts = devsAtivos();
+  if (c && !devOpts.includes(c.d)) devOpts.push(c.d);
+  d.innerHTML = `<form method="dialog" id="f-compra">
+    <div class="dlg-head"><h2>${c ? 'Editar compra' : 'Nova compra'}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
+    <div class="dlg-body">
+      <div class="field full">${c ? 'Devedor' : 'Devedor(es) — com mais de um, o valor é dividido igualmente'}
+        ${c ? `<select name="dev">${devOpts.map(n => `<option ${n === c.d ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`
+      : `<div class="pick">${devOpts.map(n => `<label><input type="checkbox" name="dev" value="${esc(n)}" ${v.d.includes(n) ? 'checked' : ''}>${esc(n)}</label>`).join('')}</div>`}</div>
+      <label class="field full">Descrição<input name="c" value="${esc(v.c)}" required autocomplete="off"></label>
+      <label class="field">Meio de pagamento<select name="m">${meios.map(m => `<option ${m.n === v.m ? 'selected' : ''}>${esc(m.n)}</option>`).join('')}</select></label>
+      <label class="field">Data da compra<input type="date" name="dt" value="${v.dt}" required></label>
+      <label class="field">Valor total (R$)<input name="total" inputmode="decimal" value="${esc(numBR(v.total))}" required></label>
+      <label class="field">Parcelas<input name="n" type="number" min="1" max="120" value="${v.n}" required></label>
+      <label class="field">Começar da parcela<input name="ini" type="number" min="1" value="${v.ini}"><span class="muted" style="font-weight:400">para compras já em andamento</span></label>
+      <label class="field" id="prim-wrap">Primeira cobrança<input type="date" name="prim" value="${c && Core.meioDe(S.cfg, c.m)?.t !== 'cartao' ? v.prim : ''}"><span class="muted" style="font-weight:400">vazio = regra automática</span></label>
+      <div class="full"><div class="small" style="font-weight:600;color:var(--ink-2);margin-bottom:3px">Parcelas geradas</div><div class="preview" id="prev"></div></div>
+    </div>
+    <div class="dlg-foot">${c ? `<button class="btn danger" type="button" data-act="del-compra" data-id="${c.i}">${ico('trash', 'Excluir')}</button><button class="btn" type="button" data-act="dup-compra" data-id="${c.i}">Duplicar</button>` : ''}<div class="spacer"></div>
+      <button class="btn" value="x" formnovalidate>Cancelar</button><button class="btn primary" value="ok">${c ? 'Salvar' : 'Lançar'}</button></div>
+  </form>`;
+  const f = $('#f-compra');
+  const ler = () => {
+    const fd = new FormData(f);
+    const devs = fd.getAll('dev');
+    const meio = fd.get('m'); const tipo = Core.meioDe(S.cfg, meio)?.t;
+    return { devs, meio, tipo, c: String(fd.get('c')).trim(), dt: fd.get('dt'), total: parseNum(fd.get('total')), n: parseInt(fd.get('n')) || 1, ini: parseInt(fd.get('ini')) || 1, prim: fd.get('prim') || '' };
+  };
+  const prev = () => {
+    const x = ler();
+    $('#prim-wrap').style.display = x.tipo === 'cartao' ? 'none' : '';
+    const el = $('#prev');
+    if (!x.dt || !(x.total > 0 || x.total < 0) || x.ini > x.n) { el.innerHTML = '<span class="muted">Preencha data, valor e parcelas.</span>'; return; }
+    const div = Math.max(1, x.devs.length || 1);
+    const ps = Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: x.total / div, n: x.n, inicio: x.ini, primeira: x.tipo === 'cartao' ? '' : x.prim });
+    el.innerHTML = (div > 1 ? `<div class="muted"><span>${div} pessoas × ${brl(x.total / div)}</span></div>` : '') + ps.map(p => `<div><span>${p[0]}/${x.n} · ${dataBR(p[2])}</span><b>${brl(p[1])}</b></div>`).join('');
+  };
+  f.addEventListener('input', prev); prev();
+  f.addEventListener('submit', e => {
+    if (e.submitter && e.submitter.value !== 'ok') return;
+    const x = ler();
+    if (!c && !x.devs.length) { e.preventDefault(); toast('Escolha pelo menos um devedor'); return; }
+    if (!isFinite(x.total) || !x.total) { e.preventDefault(); toast('Valor inválido'); return; }
+    if (x.ini > x.n) { e.preventDefault(); toast('A parcela inicial passa do total'); return; }
+    const prim = x.tipo === 'cartao' ? '' : x.prim;
+    if (c) {
+      const antigo = 'c-' + c.dt.slice(0, 7);
+      Object.assign(c, { d: fd1(f, 'dev'), m: x.meio, c: x.c, dt: x.dt, v: x.total, n: x.n, p: Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: x.total, n: x.n, inicio: x.ini, primeira: prim }) });
+      Store.mark(antigo, 'c-' + c.dt.slice(0, 7));
+      toast('Compra salva');
+    } else {
+      const each = x.total / x.devs.length;
+      for (const dv of x.devs) S.compras.push({ i: uid('c'), d: dv, m: x.meio, c: x.c, dt: x.dt, v: each, n: x.n, p: Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: each, n: x.n, inicio: x.ini, primeira: prim }) });
+      Store.mark('c-' + x.dt.slice(0, 7));
+      toast(x.devs.length > 1 ? `Lançada para ${x.devs.length} pessoas` : 'Compra lançada');
+    }
+    reindex(); render();
+  });
+  d.showModal();
+  setTimeout(() => (c ? $('[name=c]', f) : $('[name=c]', f)).focus(), 30);
+}
+const fd1 = (f, k) => new FormData(f).get(k);
+
+function dlgPag(id, pre = {}) {
+  const p = id ? S.pags.find(x => x.i === id) : null;
+  const d = $('#dlg');
+  const v = p || { d: pre.d || '', m: 'Pix', dt: Core.todayISO(), v: pre.v ?? '', f: S.mes };
+  const devOpts = devsAtivos().filter(n => n !== S.cfg.eu); if (p && !devOpts.includes(p.d)) devOpts.push(p.d);
+  const metodos = ['Pix', 'Dinheiro', 'Transferência', 'Desconto']; if (p && !metodos.includes(p.m)) metodos.push(p.m);
+  d.innerHTML = `<form method="dialog" id="f-pag">
+    <div class="dlg-head"><h2>${p ? 'Editar pagamento' : 'Registrar pagamento'}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
+    <div class="dlg-body">
+      <label class="field">Devedor<select name="d" required><option value="">Escolha…</option>${devOpts.map(n => `<option ${n === v.d ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+      <label class="field">Valor (R$)<input name="v" inputmode="decimal" value="${esc(numBR(v.v))}" required></label>
+      <label class="field">Data<input type="date" name="dt" value="${v.dt}" required></label>
+      <label class="field">Meio<select name="m">${metodos.map(m => `<option ${m === v.m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
+      <label class="field full">Abate a fatura de<input type="month" name="f" value="${v.f}" required></label>
+      <p class="full small muted" id="pag-info" style="margin:0"></p>
+    </div>
+    <div class="dlg-foot">${p ? `<button class="btn danger" type="button" data-act="del-pag" data-id="${p.i}">${ico('trash', 'Excluir')}</button>` : ''}<div class="spacer"></div>
+      <button class="btn" value="x" formnovalidate>Cancelar</button><button class="btn primary" value="ok">${p ? 'Salvar' : 'Registrar'}</button></div></form>`;
+  const f = $('#f-pag');
+  const info = () => {
+    const dv = fd1(f, 'd'), m = fd1(f, 'f');
+    if (!dv || !m) { $('#pag-info').textContent = ''; return; }
+    const s = Core.saldoDevedor(S.idx, S.pags.filter(x => x !== p), dv, m);
+    $('#pag-info').textContent = `${dv} em ${mesNome(m)}: parcelas ${brl(s.devido)}, já pago ${brl(s.pago)}, falta ${brl(s.saldo)}.`;
+  };
+  f.addEventListener('input', info); info();
+  f.addEventListener('submit', e => {
+    if (e.submitter && e.submitter.value !== 'ok') return;
+    const fd = new FormData(f); const val = parseNum(fd.get('v'));
+    if (!fd.get('d') || !isFinite(val) || !val) { e.preventDefault(); toast('Confira devedor e valor'); return; }
+    const novo = { d: fd.get('d'), m: fd.get('m'), dt: fd.get('dt'), v: val, f: fd.get('f') };
+    if (p) Object.assign(p, novo); else S.pags.push({ i: uid('p'), ...novo });
+    Store.mark('pag'); toast(p ? 'Pagamento salvo' : 'Pagamento registrado'); render();
+  });
+  d.showModal();
+}
+
+/* ===== Eventos ===== */
+function mudarMes(m) { S.mes = m; render(); }
+document.addEventListener('click', async e => {
+  const t = e.target.closest('[data-view],[data-act],[data-dev],[data-compra]');
+  if (!t) return;
+  if (t.dataset.view && !t.dataset.act) { S.view = t.dataset.view; render(); window.scrollTo(0, 0); return; }
+  const a = t.dataset.act;
+  if (!a && t.dataset.dev) { S.devSel = t.dataset.dev; S.view = 'devedores'; render(); if (e.target.closest('.dev-list') == null) window.scrollTo(0, 0); return; }
+  if (!a && t.dataset.compra) { dlgCompra(t.dataset.compra); return; }
+  switch (a) {
+    case 'mes-': mudarMes(Core.addMonths(S.mes, -1)); break;
+    case 'mes+': mudarMes(Core.addMonths(S.mes, 1)); break;
+    case 'mes-hoje': mudarMes(Core.todayISO().slice(0, 7)); break;
+    case 'ir-mes': mudarMes(t.dataset.m); break;
+    case 'nova-compra': dlgCompra(null, { d: t.dataset.d }); break;
+    case 'novo-pag': dlgPag(null, { d: t.dataset.d, v: t.dataset.v ? Number(t.dataset.v) : '' }); break;
+    case 'edit-pag': dlgPag(t.dataset.id); break;
+    case 'del-pag': {
+      const p = S.pags.find(x => x.i === t.dataset.id);
+      $('#dlg').open && $('#dlg').close();
+      if (p && await confirmar(`Excluir o pagamento de ${brl(p.v)} de ${p.d} (${dataBR(p.dt)})?`)) { S.pags = S.pags.filter(x => x !== p); Store.mark('pag'); render(); toast('Pagamento excluído'); }
+      break;
+    }
+    case 'del-compra': {
+      const c = S.compras.find(x => x.i === t.dataset.id);
+      $('#dlg').close();
+      if (c && await confirmar(`Excluir “${c.c}” de ${c.d} e todas as ${c.p.length} parcelas?`)) { S.compras = S.compras.filter(x => x !== c); Store.mark('c-' + c.dt.slice(0, 7)); reindex(); render(); toast('Compra excluída'); }
+      break;
+    }
+    case 'dup-compra': {
+      const c = S.compras.find(x => x.i === t.dataset.id); $('#dlg').close();
+      dlgCompra(null, { d: c.d, m: c.m, c: c.c, total: c.v, n: c.n, dt: Core.todayISO() });
+      break;
+    }
+    case 'so-aberto': S.soAberto = t.checked; render(); break;
+    case 'devmodo': S.devModo = t.dataset.v; render(); break;
+    case 'cobrar': mostrarTexto('Cobrança de ' + S.devSel, 'Revise e envie pelo WhatsApp.', textoCobranca()); break;
+    case 'lf-st': S.lf.st = t.dataset.v; S.lf.lim = 80; render(); break;
+    case 'lf-mais': S.lf.lim += 120; render(); break;
+    case 'pf-per': S.pf.per = t.dataset.v; render(); break;
+    case 'plan-manual': { const it = S.cfg.plan.itens[+t.dataset.i]; const R = Core.planejamento(S.cfg, S.mes); it.mn = Core.r2(R.itens.find(x => x.id === it.id).calc); Store.mark('cfg'); render(); break; }
+    case 'plan-auto': S.cfg.plan.itens[+t.dataset.i].mn = null; Store.mark('cfg'); render(); break;
+    case 'plan-add': S.cfg.plan.itens.push({ id: uid('i'), n: 'Novo gasto', b: 0, r: 0, q: ['v', 1], mn: null, dia: null, cx: '', emp: false, lk: null, fx: null }); Store.mark('cfg'); render(); break;
+    case 'plan-del': { const it = S.cfg.plan.itens[+t.dataset.i]; if (await confirmar(`Excluir “${it.n}” do custo de vida?`)) { S.cfg.plan.itens.splice(+t.dataset.i, 1); Store.mark('cfg'); render(); } break; }
+    case 'list-add': { const arr = getPath(S.cfg, t.dataset.k); arr.push({ n: 'Novo', v: 0 }); Store.mark('cfg'); render(); break; }
+    case 'list-del': { const arr = getPath(S.cfg, t.dataset.k); const it = arr[+t.dataset.i]; if (await confirmar(`Excluir “${it.n}”?`)) { arr.splice(+t.dataset.i, 1); Store.mark('cfg'); render(); } break; }
+    case 'add-dev': {
+      const n = $('#novo-dev').value.trim();
+      if (!n) return; if (devsTodos().some(x => x.toLowerCase() === n.toLowerCase())) { toast('Esse nome já existe'); return; }
+      S.cfg.devs.push({ n, a: true }); S.cfg.devs.sort((a, b) => a.n.localeCompare(b.n, 'pt-BR')); Store.mark('cfg'); render(); toast('Devedor adicionado'); break;
+    }
+    case 'set-eu': S.cfg.eu = t.dataset.n; Store.mark('cfg'); render(); break;
+    case 'add-meio': S.cfg.meios.push({ n: 'Novo cartão', t: 'cartao', f: 1, v: 10, x: 0, cor: '#607D8B' }); Store.mark('cfg'); render(); break;
+    case 'add-cobr': S.cfg.cobr.push({ id: uid('m'), n: 'Nova cobrança', v: 0, d: 1, m: S.cfg.meios.find(m => m.t === 'cartao')?.n || '' }); Store.mark('cfg'); render(); break;
+    case 'conectar': Auth.clientId ? Auth.entrar() : telaConfig(); break;
+    case 'sincronizar': await Store.flush(true); if (!Store.err) toast('Enviado ao OneDrive'); break;
+    case 'desconectar':
+      if (await confirmar('Sair da conta Microsoft neste aparelho? Os dados continuam no seu OneDrive e uma cópia fica neste navegador.', 'Desconectar')) { await Store.flush(true); Auth.sair(); location.reload(); }
+      break;
+    case 'exp-json': salvarArquivo(`caderneta-backup-${Core.todayISO()}.json`, JSON.stringify({ app: 'caderneta', versao: 1, cfg: S.cfg, compras: S.compras, pags: S.pags })); break;
+    case 'exp-csv': {
+      const q = s => `"${String(s).replace(/"/g, '""')}"`;
+      const lines = ['Devedor;Meio;Compra;Data;Valor da compra;Parcela;Parcelas;Valor parcela;Vencimento'];
+      for (const c of S.compras) for (const p of c.p) lines.push([q(c.d), q(c.m), q(c.c), dataBR(c.dt), numBR(Core.r2(c.v)), p[0], c.n, numBR(Core.r2(p[1])), dataBR(p[2])].join(';'));
+      salvarArquivo(`caderneta-parcelas-${Core.todayISO()}.csv`, '\ufeff' + lines.join('\r\n'));
+      break;
+    }
+  }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('.item[data-compra]')) dlgCompra(e.target.dataset.compra); });
+
+document.addEventListener('change', async e => {
+  const t = e.target;
+  if (t.dataset.bind) {
+    const ty = t.dataset.type; let v;
+    if (ty === 'bool') v = t.checked;
+    else if (ty === 'text') v = t.value;
+    else if (ty === 'int') { v = parseInt(t.value); if (!isFinite(v)) v = 0; }
+    else if (ty === 'intnull') { v = parseInt(t.value); if (!isFinite(v)) v = null; }
+    else if (ty === 'numnull') { v = parseNum(t.value); if (!isFinite(v)) v = null; }
+    else { v = parseNum(t.value); if (!isFinite(v)) v = 0; }
+    setPath(S.cfg, t.dataset.bind, v);
+    if (t.dataset.bind.startsWith('fat.')) {
+      // limpa entradas vazias
+      const m = t.dataset.bind.split('.');
+      const o = S.cfg.fat[m[1]][m[2]]; if (o && o.i == null && !o.p) delete S.cfg.fat[m[1]][m[2]];
+    }
+    Store.mark('cfg'); render(); return;
+  }
+  if (t.dataset.ap) {
+    const [m, c] = t.dataset.ap.split('.'); const v = parseNum(t.value);
+    const row = S.cfg.plan.ap.meses[m] || (S.cfg.plan.ap.meses[m] = {});
+    if (isFinite(v)) row[c] = v; else delete row[c];
+    if (!Object.keys(row).length) delete S.cfg.plan.ap.meses[m];
+    Store.mark('cfg'); render(); return;
+  }
+  if (t.dataset.renameDev != null) {
+    const old = t.dataset.renameDev, n = t.value.trim();
+    if (!n || n === old) { t.value = old; return; }
+    if (devsTodos().some(x => x !== old && x.toLowerCase() === n.toLowerCase())) {
+      if (!await confirmar(`Já existe “${n}”. Juntar todos os lançamentos de ${old} em ${n}?`, 'Juntar')) { t.value = old; return; }
+      S.cfg.devs = S.cfg.devs.filter(d => d.n !== old);
+    } else S.cfg.devs.find(d => d.n === old).n = n;
+    const meses = new Set();
+    S.compras.forEach(c => { if (c.d === old) { c.d = n; meses.add('c-' + c.dt.slice(0, 7)); } });
+    S.pags.forEach(p => { if (p.d === old) p.d = n; });
+    if (S.cfg.eu === old) S.cfg.eu = n; if (S.devSel === old) S.devSel = n;
+    Store.mark('cfg', 'pag', ...meses); reindex(); render(); toast('Nome atualizado'); return;
+  }
+  if (t.dataset.renameMeio != null) {
+    const old = t.dataset.renameMeio, n = t.value.trim();
+    if (!n || n === old || S.cfg.meios.some(m => m.n === n)) { t.value = old; if (n && n !== old) toast('Esse nome já existe'); return; }
+    S.cfg.meios.find(m => m.n === old).n = n;
+    const meses = new Set();
+    S.compras.forEach(c => { if (c.m === old) { c.m = n; meses.add('c-' + c.dt.slice(0, 7)); } });
+    (S.cfg.cobr || []).forEach(c => { if (c.m === old) c.m = n; });
+    Object.values(S.cfg.fat || {}).forEach(o => { if (o[old]) { o[n] = o[old]; delete o[old]; } });
+    Store.mark('cfg', ...meses); reindex(); render(); return;
+  }
+  if (t.id === 'imp-json' && S.ready) {
+    const file = t.files[0]; if (!file) return;
+    try {
+      const j = JSON.parse(await file.text());
+      if (j.app !== 'caderneta' || !j.cfg || !Array.isArray(j.compras)) throw new Error('formato');
+      if (!await confirmar(`Substituir todos os dados atuais por este backup (${j.compras.length} compras, ${(j.pags || []).length} pagamentos)?`, 'Substituir')) return;
+      const antigos = new Set(S.compras.map(c => 'c-' + c.dt.slice(0, 7)));
+      S.cfg = j.cfg; S.compras = j.compras; S.pags = j.pags || [];
+      reindex(); Store.mark(...antigos); Store.markAll(); render(); toast('Backup importado');
+    } catch (err) { toast('Arquivo inválido: use um backup exportado por aqui'); }
+    t.value = '';
+  }
+  if (t.dataset.lf === 'd' || t.dataset.lf === 'm') { S.lf[t.dataset.lf] = t.value; S.lf.lim = 80; render(); }
+  if (t.dataset.pf) { S.pf[t.dataset.pf] = t.value; render(); }
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.lf === 'q') { S.lf.q = t.value; S.lf.lim = 80; clearTimeout(S._qt); S._qt = setTimeout(() => { render(); const el = $('[data-lf="q"]'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 250); }
+});
+
+
+</script>
+<script>
+/* ===== Login Microsoft (OAuth 2.0 + PKCE) e OneDrive ===== */
+const AUTH_BASE = 'https://login.microsoftonline.com/common/oauth2/v2.0';
+const GRAPH = 'https://graph.microsoft.com/v1.0';
+const SCOPES = 'Files.ReadWrite.AppFolder offline_access openid profile';
+const ARQ = '/me/drive/special/approot:/caderneta.json';
+
+const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const randStr = () => { const a = new Uint8Array(48); crypto.getRandomValues(a); return b64url(a.buffer); };
+
+const Auth = {
+  get clientId() { return localStorage.getItem('caderneta-clientid') || ''; },
+  set clientId(v) { localStorage.setItem('caderneta-clientid', v); },
+  token: null, exp: 0, nome: '',
+  get rt() { return localStorage.getItem('caderneta-rt') || ''; },
+  set rt(v) { v ? localStorage.setItem('caderneta-rt', v) : localStorage.removeItem('caderneta-rt'); },
+  get redirect() { return location.origin + location.pathname; },
+  get conectado() { return !!(this.token || this.rt); },
+
+  async entrar() {
+    if (!this.clientId) { toast('Informe primeiro o ID do aplicativo'); return; }
+    const verifier = randStr();
+    sessionStorage.setItem('caderneta-pkce', verifier);
+    const state = randStr().slice(0, 12);
+    sessionStorage.setItem('caderneta-state', state);
+    const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+    const p = new URLSearchParams({
+      client_id: this.clientId, response_type: 'code', redirect_uri: this.redirect, response_mode: 'query',
+      scope: SCOPES, code_challenge: b64url(d), code_challenge_method: 'S256', state,
+    });
+    location.assign(`${AUTH_BASE}/authorize?${p}`);
+  },
+
+  async trocarToken(params) {
+    const r = await fetch(`${AUTH_BASE}/token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: this.clientId, scope: SCOPES, redirect_uri: this.redirect, ...params }),
+    });
+    const j = await r.json();
+    if (!r.ok) { const e = new Error(j.error_description || j.error || 'falha no login'); e.oauth = j.error; throw e; }
+    this.token = j.access_token; this.exp = Date.now() + (j.expires_in - 120) * 1000;
+    if (j.refresh_token) this.rt = j.refresh_token;
+    return j;
+  },
+
+  /* trata a volta do login; devolve true se acabou de entrar */
+  async voltaDoLogin() {
+    const q = new URLSearchParams(location.search);
+    const code = q.get('code'), err = q.get('error');
+    if (!code && !err) return false;
+    const state = q.get('state'), esperado = sessionStorage.getItem('caderneta-state');
+    history.replaceState(null, '', this.redirect);
+    if (err) { this.erroLogin = q.get('error_description') || err; return false; }
+    if (state !== esperado) { this.erroLogin = 'Resposta de login inesperada. Tente entrar de novo.'; return false; }
+    const verifier = sessionStorage.getItem('caderneta-pkce');
+    sessionStorage.removeItem('caderneta-pkce'); sessionStorage.removeItem('caderneta-state');
+    try { await this.trocarToken({ grant_type: 'authorization_code', code, code_verifier: verifier }); return true; }
+    catch (e) { this.erroLogin = e.message; return false; }
+  },
+
+  async acessar() {
+    if (this.token && Date.now() < this.exp) return this.token;
+    if (!this.rt) return null;
+    try { await this.trocarToken({ grant_type: 'refresh_token', refresh_token: this.rt }); return this.token; }
+    catch (e) {
+      if (e.oauth === 'invalid_grant' || e.oauth === 'interaction_required') { this.rt = ''; this.token = null; }
+      throw e;
+    }
+  },
+
+  sair() { this.rt = ''; this.token = null; this.exp = 0; },
+};
+
+const Cloud = {
+  etag: null, quando: null,
+  async req(url, opts = {}, tentou) {
+    const tk = await Auth.acessar();
+    if (!tk) { const e = new Error('sem sessão'); e.semSessao = true; throw e; }
+    const r = await fetch(url.startsWith('http') ? url : GRAPH + url, { ...opts, headers: { Authorization: 'Bearer ' + tk, ...(opts.headers || {}) } });
+    if (r.status === 401 && !tentou) { Auth.token = null; Auth.exp = 0; return this.req(url, opts, true); }
+    return r;
+  },
+  async baixar() {
+    const meta = await this.req(ARQ);
+    if (meta.status === 404) { this.etag = null; return null; }
+    if (!meta.ok) throw new Error('OneDrive respondeu ' + meta.status);
+    const m = await meta.json();
+    this.etag = m.eTag; this.quando = m.lastModifiedDateTime;
+    const c = await this.req(ARQ + ':/content');
+    if (!c.ok) throw new Error('OneDrive respondeu ' + c.status);
+    return c.json();
+  },
+  async enviar(dados, forcar) {
+    const h = { 'Content-Type': 'application/json' };
+    if (this.etag && !forcar) h['if-match'] = this.etag;
+    const r = await this.req(ARQ + ':/content', { method: 'PUT', headers: h, body: JSON.stringify(dados) });
+    if (r.status === 412 || r.status === 409) { const e = new Error('conflito'); e.conflito = true; throw e; }
+    if (!r.ok) throw new Error('OneDrive respondeu ' + r.status);
+    const m = await r.json();
+    this.etag = m.eTag; this.quando = m.lastModifiedDateTime;
+  },
+};
+
+/* ===== Armazenamento ===== */
+const Store = {
+  mode: 'local', dirty: new Set(), timer: null, busy: false, err: null, ultimo: null, offline: false,
+  pacote() { return { app: 'caderneta', versao: 1, cfg: { ...S.cfg, atualizado: new Date().toISOString() }, compras: S.compras, pags: S.pags }; },
+  cache(p) { try { localStorage.setItem('caderneta-dados', JSON.stringify(p || this.pacote())); } catch (e) { } },
+  lerCache() { try { const r = localStorage.getItem('caderneta-dados'); return r ? JSON.parse(r) : null; } catch (e) { return null; } },
+  mark() { this.dirty.add('tudo'); status(); clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 1200); },
+  markAll() { this.mark(); },
+  async flush(forcar) {
+    if (!this.dirty.size && !forcar) return;
+    if (this.busy) { clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 600); return; }
+    this.busy = true; this.dirty.clear(); status();
+    const p = this.pacote();
+    this.cache(p);
+    if (this.mode === 'onedrive') {
+      try {
+        await Cloud.enviar(p, forcar === 'forcar');
+        this.err = null; this.offline = false; this.ultimo = new Date();
+      } catch (e) {
+        console.error(e);
+        this.dirty.add('tudo');
+        if (e.conflito) { this.err = 'O arquivo mudou em outro aparelho.'; this.busy = false; status(); conflito(); return; }
+        if (e.semSessao) this.err = 'Sessão expirada. Entre de novo com a Microsoft.';
+        else { this.err = 'Sem conexão com o OneDrive. Salvo neste aparelho; tentando de novo.'; this.offline = true; clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 15000); }
+      }
+    } else { this.err = null; this.ultimo = new Date(); }
+    this.busy = false; status();
+  },
+};
+function quandoTxt(d) {
+  if (!d) return '';
+  const s = Math.round((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'agora';
+  if (s < 3600) return `há ${Math.round(s / 60)} min`;
+  return d.toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+}
+function status() {
+  const el = $('#save-state'); if (!el) return;
+  el.classList.toggle('err', !!Store.err);
+  if (Store.err) el.innerHTML = esc(Store.err);
+  else if (Store.busy || Store.dirty.size) el.innerHTML = 'Salvando…';
+  else if (Store.mode === 'onedrive') el.innerHTML = `<b>Salvo no OneDrive</b> ${quandoTxt(Store.ultimo)}`;
+  else el.innerHTML = `<b>Salvo neste aparelho</b><br><button class="btn link small" data-act="conectar">Conectar ao OneDrive</button>`;
+}
+window.addEventListener('beforeunload', e => { if (Store.dirty.size || Store.busy) e.preventDefault(); });
+window.addEventListener('online', () => { if (Store.dirty.size) Store.flush(); });
+
+async function conflito() {
+  const d = $('#conf');
+  d.innerHTML = `<form method="dialog"><div class="dlg-head"><h2>Versões diferentes</h2></div>
+  <div class="dlg-body"><p class="full" style="margin:0">A Caderneta no OneDrive foi alterada em outro aparelho depois que esta página abriu. Escolha qual versão vale.</p></div>
+  <div class="dlg-foot"><button class="btn" value="nuvem">Usar a do OneDrive</button><button class="btn primary" value="aqui">Manter a deste aparelho</button></div></form>`;
+  d.showModal();
+  d.onclose = async () => {
+    if (d.returnValue === 'aqui') { Store.err = null; Store.flush('forcar'); }
+    else { try { const j = await Cloud.baixar(); if (j) { aplicar(j); toast('Versão do OneDrive carregada'); } Store.err = null; status(); } catch (e) { toast('Não consegui baixar agora'); } }
+  };
+}
+
+/* ===== Telas de entrada ===== */
+function telaConfig(msg) {
+  $('#app').innerHTML = `<div class="welcome">
+    <h1>Caderneta</h1>
+    <p>Para guardar os dados no seu OneDrive, informe o <b>ID do aplicativo (cliente)</b> que você criou no portal da Microsoft.</p>
+    ${msg ? `<div class="notice">${esc(msg)}</div>` : ''}
+    <label class="field" style="margin:16px 0">ID do aplicativo (cliente)<input id="cid" value="${esc(Auth.clientId)}" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off" spellcheck="false"></label>
+    <p class="small muted">Endereço a cadastrar no portal como URI de redirecionamento (tipo <b>SPA</b>):<br><code>${esc(Auth.redirect)}</code></p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
+      <button class="btn primary" id="entrar">Salvar e entrar com a Microsoft</button>
+      <button class="btn" id="so-local">Usar só neste aparelho</button></div>
+    <div id="save-state" class="save-state" style="padding:14px 0"></div></div>`;
+  $('#entrar').onclick = () => { const v = $('#cid').value.trim(); if (!/^[0-9a-f-]{30,40}$/i.test(v)) { toast('ID do aplicativo inválido'); return; } Auth.clientId = v; Auth.entrar(); };
+  $('#so-local').onclick = () => boot(true);
+}
+function telaLogin(msg) {
+  $('#app').innerHTML = `<div class="welcome">
+    <h1>Caderneta</h1>
+    <p>Cartões, empréstimos e planejamento, com os dados guardados no seu OneDrive.</p>
+    ${msg ? `<div class="notice">${esc(msg)}</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
+      <button class="btn primary" id="entrar">Entrar com a Microsoft</button>
+      <button class="btn" id="so-local">Usar só neste aparelho</button>
+      <button class="btn link" id="trocar">Trocar o ID do aplicativo</button></div>
+    <div id="save-state" class="save-state" style="padding:14px 0"></div></div>`;
+  $('#entrar').onclick = () => Auth.entrar();
+  $('#so-local').onclick = () => boot(true);
+  $('#trocar').onclick = () => telaConfig();
+}
+function telaPrimeiraVez() {
+  $('#app').innerHTML = `<div class="welcome">
+    <h1>Tudo pronto</h1>
+    <p>Sua conta está conectada${Store.mode === 'onedrive' ? ', e ainda não há uma Caderneta no OneDrive' : ''}. Importe um backup (o arquivo <b>.json</b> exportado pela Caderneta) ou comece do zero.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
+      <label class="btn primary">Importar backup (.json)<input type="file" accept=".json,application/json" id="imp-json" hidden></label>
+      <button class="btn" id="zero">Começar do zero</button></div>
+    <div id="save-state" class="save-state" style="padding:14px 0"></div></div>`;
+  $('#zero').onclick = () => { S.cfg = DEFAULT_CFG(); S.compras = []; S.pags = []; iniciar(); Store.mark(); };
+}
+function aplicar(j) {
+  S.cfg = j.cfg; S.compras = j.compras || []; S.pags = j.pags || [];
+  if (S.ready) { reindex(); render(); } else iniciar();
+}
+function iniciar() {
+  reindex(); S.ready = true;
+  S.cfg.cobr ??= []; S.cfg.fat ??= {}; S.cfg.plan ??= DEFAULT_CFG().plan;
+  const vistos = new Set();
+  for (const it of S.cfg.plan.itens) { if (!it.id || vistos.has(it.id)) { it.id = uid('i'); Store.dirty.add('tudo'); } vistos.add(it.id); }
+  shell(); render();
+}
+
+async function boot(soLocal) {
+  $('#app').innerHTML = '<div class="empty" style="padding-top:120px">Carregando…</div>';
+  if (!soLocal) {
+    const entrou = await Auth.voltaDoLogin();
+    if (!Auth.clientId) return telaConfig(Auth.erroLogin);
+    if (!Auth.conectado) return telaLogin(Auth.erroLogin);
+    Store.mode = 'onedrive';
+    let j = null;
+    try { j = await Cloud.baixar(); }
+    catch (e) {
+      console.error(e);
+      if (e.semSessao) { Auth.sair(); return telaLogin('Sua sessão expirou. Entre de novo.'); }
+      const cache = Store.lerCache();
+      if (cache) { Store.offline = true; Store.err = 'Sem conexão com o OneDrive. Usando a cópia deste aparelho.'; aplicar(cache); return; }
+      return telaLogin('Não consegui falar com o OneDrive: ' + e.message);
+    }
+    if (j && j.cfg) {
+      const cache = Store.lerCache();
+      aplicar(j); Store.ultimo = new Date(); Store.cache(j);
+      if (cache && cache.cfg && cache.cfg.atualizado && j.cfg.atualizado && cache.cfg.atualizado > j.cfg.atualizado) {
+        toast('Havia alterações não enviadas neste aparelho'); Store.mark();
+      }
+      return;
+    }
+    const cache = Store.lerCache();
+    if (cache && cache.cfg) { aplicar(cache); Store.mark(); toast('Enviando seus dados para o OneDrive'); return; }
+    return telaPrimeiraVez();
+  }
+  Store.mode = 'local';
+  const cache = Store.lerCache();
+  if (cache && cache.cfg) aplicar(cache); else telaPrimeiraVez();
+}
+document.addEventListener('change', async e => {
+  if (S.ready || e.target.id !== 'imp-json') return;
+  e.stopPropagation();
+  try {
+    const j = JSON.parse(await e.target.files[0].text());
+    if (j.app !== 'caderneta' || !j.cfg) throw 0;
+    aplicar(j); Store.mark(); toast('Backup importado');
+  } catch (err) { toast('Arquivo inválido'); }
+}, true);
+boot();
+
+</script>
+</body>
+</html>
