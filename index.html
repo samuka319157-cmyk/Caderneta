@@ -1263,9 +1263,13 @@ const API = 'https://www.googleapis.com/drive/v3';
 const UP = 'https://www.googleapis.com/upload/drive/v3';
 const NOME_ARQ = 'caderneta.json';
 
+/* ID do cliente OAuth deste app. Não é segredo: só funciona a partir da
+   origem cadastrada no Google Cloud. Pode ser trocado na tela de configuração. */
+const CLIENT_ID_PADRAO = '448501927423-q1f8pq4bp8n79i18h0bpg10lnshc2n9i.apps.googleusercontent.com';
+
 const Auth = {
   token: null, exp: 0, tc: null, lib: null, pedindo: null,
-  get clientId() { return localStorage.getItem('caderneta-clientid') || ''; },
+  get clientId() { return localStorage.getItem('caderneta-clientid') || CLIENT_ID_PADRAO; },
   set clientId(v) { localStorage.setItem('caderneta-clientid', v); },
   get jaConectou() { return localStorage.getItem('caderneta-conectou') === '1'; },
   set jaConectou(v) { v ? localStorage.setItem('caderneta-conectou', '1') : localStorage.removeItem('caderneta-conectou'); },
@@ -1503,7 +1507,8 @@ function telaConfig(msg) {
     <p class="small muted">Endereço a cadastrar no Google Cloud como <b>origem JavaScript autorizada</b>, sem barra no final:<br><code>${esc(Auth.origem)}</code></p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
       <button class="btn primary" id="entrar">Salvar e entrar com o Google</button>
-      <button class="btn" id="so-local">Usar só neste aparelho</button></div>
+      <button class="btn" id="so-local">Usar só neste aparelho</button>
+      ${localStorage.getItem('caderneta-clientid') ? `<button class="btn link" id="padrao">Voltar ao ID original</button>` : ''}</div>
     <div id="save-state" class="save-state" style="padding:14px 0"></div></div>`;
   $('#entrar').onclick = async () => {
     const v = $('#cid').value.trim();
@@ -1515,6 +1520,7 @@ function telaConfig(msg) {
     await sincronizar();
   };
   $('#so-local').onclick = () => abrirLocal();
+  const b = $('#padrao'); if (b) b.onclick = () => { localStorage.removeItem('caderneta-clientid'); telaConfig('Voltou para o ID original do app.'); };
 }
 function telaLogin(msg) {
   $('#app').innerHTML = `<div class="welcome">
