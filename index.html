@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+
 :root{
   --paper:#E9EEEC; --sheet:#FAFBFA; --sheet-2:#F1F5F3; --ink:#15262B; --ink-2:#51646A; --ink-3:#7F9095;
   --rule:#CAD5D1; --rule-2:#DFE6E3;
@@ -215,6 +216,7 @@ dialog::backdrop{background:rgba(10,20,22,.5)}
   .tabs .nav-btn{flex:1;flex-direction:column;gap:2px;font-size:11px;padding:6px 2px;text-align:center}
 }
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+
 
 </style>
 </head>
@@ -544,10 +546,15 @@ function confirmar(msg, ok = 'Excluir') {
 
 async function salvarArquivo(nome, dados) {
   try {
-    const dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
-    if (dl) { await dl.save({ filename: nome, data: dados }); toast('Arquivo salvo'); return; }
-  } catch (e) { if (e && e.code === 'declined') return; console.warn(e); }
-  // alternativa: copiar
+    const tipo = nome.endsWith('.csv') ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8';
+    const url = URL.createObjectURL(new Blob([dados], { type: tipo }));
+    const a = document.createElement('a');
+    a.href = url; a.download = nome; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    toast('Arquivo baixado');
+    return;
+  } catch (e) { console.warn(e); }
   mostrarTexto('Copie o conteúdo', 'Não foi possível baixar o arquivo aqui. Copie o conteúdo abaixo e salve como ' + nome + '.', dados);
 }
 function mostrarTexto(titulo, sub, texto) {
@@ -970,10 +977,10 @@ function vAjustes() {
   <section class="sec"><div class="sec-head"><h2>Geral</h2></div><div class="card"><dl class="kv">
     <dt>Taxa sobre o valor do mês (%)<small>coluna “com taxa” do resumo</small></dt><dd style="width:90px">${inp('taxa')}</dd></dl>
     <h3 style="margin:16px 0 6px">Backup</h3>
-    <p class="small muted" style="margin:0 0 8px">${Store.mode === 'onedrive' ? 'Os dados ficam num arquivo <b>caderneta.json</b> na pasta do aplicativo no seu OneDrive.' : 'Os dados estão salvos só neste aparelho. Conecte o OneDrive para usar em qualquer lugar.'} Exporte um backup de vez em quando.</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${Store.mode === 'onedrive'
-      ? `<button class="btn" data-act="sincronizar">Salvar agora no OneDrive</button><button class="btn danger" data-act="desconectar">Desconectar</button>`
-      : `<button class="btn primary" data-act="conectar">Conectar ao OneDrive</button>`}</div>
+    <p class="small muted" style="margin:0 0 8px">${Store.mode === 'drive' ? 'Os dados ficam num arquivo <b>caderneta.json</b> no seu Google Drive.' : 'Os dados estão salvos só neste aparelho. Conecte o Google Drive para usar em qualquer lugar.'} Exporte um backup de vez em quando.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${Store.mode === 'drive'
+      ? `<button class="btn" data-act="sincronizar">Salvar agora no Drive</button><button class="btn danger" data-act="desconectar">Desconectar</button>`
+      : `<button class="btn primary" data-act="conectar">Conectar ao Google Drive</button>`}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="exp-json">Exportar backup (.json)</button><button class="btn" data-act="exp-csv">Exportar parcelas (.csv)</button>
     <label class="btn">Importar backup<input type="file" accept=".json,application/json" id="imp-json" hidden></label></div>
     ${c.atualizado ? `<p class="small muted">Última gravação: ${new Date(c.atualizado).toLocaleString('pt-BR')}</p>` : ''}</div></section>
@@ -1161,10 +1168,10 @@ document.addEventListener('click', async e => {
     case 'set-eu': S.cfg.eu = t.dataset.n; Store.mark('cfg'); render(); break;
     case 'add-meio': S.cfg.meios.push({ n: 'Novo cartão', t: 'cartao', f: 1, v: 10, x: 0, cor: '#607D8B' }); Store.mark('cfg'); render(); break;
     case 'add-cobr': S.cfg.cobr.push({ id: uid('m'), n: 'Nova cobrança', v: 0, d: 1, m: S.cfg.meios.find(m => m.t === 'cartao')?.n || '' }); Store.mark('cfg'); render(); break;
-    case 'conectar': Auth.clientId ? Auth.entrar() : telaConfig(); break;
-    case 'sincronizar': await Store.flush(true); if (!Store.err) toast('Enviado ao OneDrive'); break;
+    case 'conectar': Auth.clientId ? await Store.reconectar() : telaConfig(); break;
+    case 'sincronizar': await Store.flush(true); if (!Store.err) toast('Enviado ao Drive'); break;
     case 'desconectar':
-      if (await confirmar('Sair da conta Microsoft neste aparelho? Os dados continuam no seu OneDrive e uma cópia fica neste navegador.', 'Desconectar')) { await Store.flush(true); Auth.sair(); location.reload(); }
+      if (await confirmar('Sair da conta Google neste aparelho? Os dados continuam no seu Drive e uma cópia fica neste navegador.', 'Desconectar')) { await Store.flush(true); Auth.sair(); location.reload(); }
       break;
     case 'exp-json': salvarArquivo(`caderneta-backup-${Core.todayISO()}.json`, JSON.stringify({ app: 'caderneta', versao: 1, cfg: S.cfg, compras: S.compras, pags: S.pags })); break;
     case 'exp-csv': {
@@ -1249,137 +1256,183 @@ document.addEventListener('input', e => {
 
 </script>
 <script>
-/* ===== Login Microsoft (OAuth 2.0 + PKCE) e OneDrive ===== */
-const AUTH_BASE = 'https://login.microsoftonline.com/common/oauth2/v2.0';
-const GRAPH = 'https://graph.microsoft.com/v1.0';
-const SCOPES = 'Files.ReadWrite.AppFolder offline_access openid profile';
-const ARQ = '/me/drive/special/approot:/caderneta.json';
-
-const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const randStr = () => { const a = new Uint8Array(48); crypto.getRandomValues(a); return b64url(a.buffer); };
+/* ===== Login Google e gravação no Google Drive ===== */
+const GIS = 'https://accounts.google.com/gsi/client';
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const API = 'https://www.googleapis.com/drive/v3';
+const UP = 'https://www.googleapis.com/upload/drive/v3';
+const NOME_ARQ = 'caderneta.json';
 
 const Auth = {
+  token: null, exp: 0, tc: null, lib: null, pedindo: null,
   get clientId() { return localStorage.getItem('caderneta-clientid') || ''; },
   set clientId(v) { localStorage.setItem('caderneta-clientid', v); },
-  token: null, exp: 0, nome: '',
-  get rt() { return localStorage.getItem('caderneta-rt') || ''; },
-  set rt(v) { v ? localStorage.setItem('caderneta-rt', v) : localStorage.removeItem('caderneta-rt'); },
-  get redirect() { return location.origin + location.pathname; },
-  get conectado() { return !!(this.token || this.rt); },
+  get jaConectou() { return localStorage.getItem('caderneta-conectou') === '1'; },
+  set jaConectou(v) { v ? localStorage.setItem('caderneta-conectou', '1') : localStorage.removeItem('caderneta-conectou'); },
+  get origem() { return location.origin; },
 
-  async entrar() {
-    if (!this.clientId) { toast('Informe primeiro o ID do aplicativo'); return; }
-    const verifier = randStr();
-    sessionStorage.setItem('caderneta-pkce', verifier);
-    const state = randStr().slice(0, 12);
-    sessionStorage.setItem('caderneta-state', state);
-    const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-    const p = new URLSearchParams({
-      client_id: this.clientId, response_type: 'code', redirect_uri: this.redirect, response_mode: 'query',
-      scope: SCOPES, code_challenge: b64url(d), code_challenge_method: 'S256', state,
+  carregar() {
+    if (this.lib) return this.lib;
+    this.lib = new Promise((ok, falha) => {
+      if (window.google && google.accounts && google.accounts.oauth2) return ok();
+      const s = document.createElement('script');
+      s.src = GIS; s.async = true; s.defer = true;
+      s.onload = () => ok();
+      s.onerror = () => falha(new Error('Não consegui carregar o login do Google. Verifique a conexão.'));
+      document.head.appendChild(s);
     });
-    location.assign(`${AUTH_BASE}/authorize?${p}`);
+    return this.lib;
   },
 
-  async trocarToken(params) {
-    const r = await fetch(`${AUTH_BASE}/token`, {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: this.clientId, scope: SCOPES, redirect_uri: this.redirect, ...params }),
+  /* pede um token. silencioso = sem nenhuma janela; devolve null se precisar de clique */
+  async pedir(silencioso) {
+    if (!this.clientId) throw new Error('sem client id');
+    if (this.pedindo) return this.pedindo;
+    await this.carregar();
+    this.pedindo = new Promise(resolve => {
+      let pronto = false;
+      const fim = (v) => { if (pronto) return; pronto = true; this.pedindo = null; resolve(v); };
+      try {
+        this.tc = google.accounts.oauth2.initTokenClient({
+          client_id: this.clientId, scope: SCOPE,
+          prompt: silencioso ? 'none' : (this.jaConectou ? '' : 'consent'),
+          callback: (r) => {
+            if (r && r.access_token) {
+              this.token = r.access_token;
+              this.exp = Date.now() + ((r.expires_in || 3600) - 300) * 1000;
+              this.jaConectou = true;
+              fim(this.token);
+            } else fim(null);
+          },
+          error_callback: () => fim(null),
+        });
+        this.tc.requestAccessToken();
+      } catch (e) { console.warn(e); fim(null); }
+      setTimeout(() => fim(null), silencioso ? 8000 : 120000);
     });
-    const j = await r.json();
-    if (!r.ok) { const e = new Error(j.error_description || j.error || 'falha no login'); e.oauth = j.error; throw e; }
-    this.token = j.access_token; this.exp = Date.now() + (j.expires_in - 120) * 1000;
-    if (j.refresh_token) this.rt = j.refresh_token;
-    return j;
+    return this.pedindo;
   },
 
-  /* trata a volta do login; devolve true se acabou de entrar */
-  async voltaDoLogin() {
-    const q = new URLSearchParams(location.search);
-    const code = q.get('code'), err = q.get('error');
-    if (!code && !err) return false;
-    const state = q.get('state'), esperado = sessionStorage.getItem('caderneta-state');
-    history.replaceState(null, '', this.redirect);
-    if (err) { this.erroLogin = q.get('error_description') || err; return false; }
-    if (state !== esperado) { this.erroLogin = 'Resposta de login inesperada. Tente entrar de novo.'; return false; }
-    const verifier = sessionStorage.getItem('caderneta-pkce');
-    sessionStorage.removeItem('caderneta-pkce'); sessionStorage.removeItem('caderneta-state');
-    try { await this.trocarToken({ grant_type: 'authorization_code', code, code_verifier: verifier }); return true; }
-    catch (e) { this.erroLogin = e.message; return false; }
-  },
-
-  async acessar() {
+  async acessar(silencioso) {
     if (this.token && Date.now() < this.exp) return this.token;
-    if (!this.rt) return null;
-    try { await this.trocarToken({ grant_type: 'refresh_token', refresh_token: this.rt }); return this.token; }
-    catch (e) {
-      if (e.oauth === 'invalid_grant' || e.oauth === 'interaction_required') { this.rt = ''; this.token = null; }
-      throw e;
-    }
+    this.token = null;
+    return this.pedir(silencioso);
   },
 
-  sair() { this.rt = ''; this.token = null; this.exp = 0; },
+  sair() {
+    const t = this.token;
+    this.token = null; this.exp = 0; this.jaConectou = false;
+    try { if (t && window.google && google.accounts) google.accounts.oauth2.revoke(t, () => { }); } catch (e) { }
+  },
 };
 
 const Cloud = {
-  etag: null, quando: null,
+  id: localStorage.getItem('caderneta-fileid') || null,
+  versao: null,
+  set fileId(v) { this.id = v; v ? localStorage.setItem('caderneta-fileid', v) : localStorage.removeItem('caderneta-fileid'); },
+
   async req(url, opts = {}, tentou) {
-    const tk = await Auth.acessar();
+    const tk = await Auth.acessar(true);
     if (!tk) { const e = new Error('sem sessão'); e.semSessao = true; throw e; }
-    const r = await fetch(url.startsWith('http') ? url : GRAPH + url, { ...opts, headers: { Authorization: 'Bearer ' + tk, ...(opts.headers || {}) } });
-    if (r.status === 401 && !tentou) { Auth.token = null; Auth.exp = 0; return this.req(url, opts, true); }
+    const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + tk, ...(opts.headers || {}) } });
+    if ((r.status === 401 || r.status === 403) && !tentou) {
+      Auth.token = null; Auth.exp = 0;
+      const novo = await Auth.acessar(true);
+      if (novo) return this.req(url, opts, true);
+      const e = new Error('sem sessão'); e.semSessao = true; throw e;
+    }
     return r;
   },
-  async baixar() {
-    const meta = await this.req(ARQ);
-    if (meta.status === 404) { this.etag = null; return null; }
-    if (!meta.ok) throw new Error('OneDrive respondeu ' + meta.status);
-    const m = await meta.json();
-    this.etag = m.eTag; this.quando = m.lastModifiedDateTime;
-    const c = await this.req(ARQ + ':/content');
-    if (!c.ok) throw new Error('OneDrive respondeu ' + c.status);
-    return c.json();
+
+  async achar() {
+    if (this.id) {
+      const r = await this.req(`${API}/files/${this.id}?fields=id,version,modifiedTime,trashed`);
+      if (r.ok) { const m = await r.json(); if (!m.trashed) { this.versao = m.version; return m; } }
+      this.fileId = null;
+    }
+    const q = encodeURIComponent(`name='${NOME_ARQ}' and trashed=false`);
+    const r = await this.req(`${API}/files?q=${q}&spaces=drive&orderBy=modifiedTime desc&fields=files(id,version,modifiedTime)`);
+    if (!r.ok) throw new Error('Google Drive respondeu ' + r.status);
+    const j = await r.json();
+    if (!j.files || !j.files.length) return null;
+    this.fileId = j.files[0].id; this.versao = j.files[0].version;
+    return j.files[0];
   },
+
+  async baixar() {
+    const m = await this.achar();
+    if (!m) return null;
+    const r = await this.req(`${API}/files/${this.id}?alt=media`);
+    if (!r.ok) throw new Error('Google Drive respondeu ' + r.status);
+    return r.json();
+  },
+
   async enviar(dados, forcar) {
-    const h = { 'Content-Type': 'application/json' };
-    if (this.etag && !forcar) h['if-match'] = this.etag;
-    const r = await this.req(ARQ + ':/content', { method: 'PUT', headers: h, body: JSON.stringify(dados) });
-    if (r.status === 412 || r.status === 409) { const e = new Error('conflito'); e.conflito = true; throw e; }
-    if (!r.ok) throw new Error('OneDrive respondeu ' + r.status);
-    const m = await r.json();
-    this.etag = m.eTag; this.quando = m.lastModifiedDateTime;
+    const corpo = JSON.stringify(dados);
+    if (!this.id) {
+      const meta = { name: NOME_ARQ, mimeType: 'application/json', description: 'Dados da Caderneta — não renomeie' };
+      const lim = 'cad' + Math.random().toString(36).slice(2);
+      const body = `--${lim}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${lim}\r\nContent-Type: application/json\r\n\r\n${corpo}\r\n--${lim}--`;
+      const r = await this.req(`${UP}/files?uploadType=multipart&fields=id,version`, {
+        method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${lim}` }, body,
+      });
+      if (!r.ok) throw new Error('Google Drive respondeu ' + r.status);
+      const m = await r.json(); this.fileId = m.id; this.versao = m.version;
+      return;
+    }
+    if (!forcar && this.versao) {
+      const c = await this.req(`${API}/files/${this.id}?fields=version`);
+      if (c.ok) { const m = await c.json(); if (m.version && m.version !== this.versao) { const e = new Error('conflito'); e.conflito = true; throw e; } }
+    }
+    const r = await this.req(`${UP}/files/${this.id}?uploadType=media&fields=id,version`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: corpo,
+    });
+    if (r.status === 404) { this.fileId = null; return this.enviar(dados, forcar); }
+    if (!r.ok) throw new Error('Google Drive respondeu ' + r.status);
+    const m = await r.json(); this.versao = m.version;
   },
 };
 
 /* ===== Armazenamento ===== */
 const Store = {
-  mode: 'local', dirty: new Set(), timer: null, busy: false, err: null, ultimo: null, offline: false,
+  mode: 'local', dirty: new Set(), timer: null, busy: false, err: null, ultimo: null, precisaClique: false,
   pacote() { return { app: 'caderneta', versao: 1, cfg: { ...S.cfg, atualizado: new Date().toISOString() }, compras: S.compras, pags: S.pags }; },
   cache(p) { try { localStorage.setItem('caderneta-dados', JSON.stringify(p || this.pacote())); } catch (e) { } },
   lerCache() { try { const r = localStorage.getItem('caderneta-dados'); return r ? JSON.parse(r) : null; } catch (e) { return null; } },
   mark() { this.dirty.add('tudo'); status(); clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 1200); },
   markAll() { this.mark(); },
+
   async flush(forcar) {
     if (!this.dirty.size && !forcar) return;
     if (this.busy) { clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 600); return; }
     this.busy = true; this.dirty.clear(); status();
     const p = this.pacote();
     this.cache(p);
-    if (this.mode === 'onedrive') {
+    if (this.mode === 'drive') {
       try {
         await Cloud.enviar(p, forcar === 'forcar');
-        this.err = null; this.offline = false; this.ultimo = new Date();
+        this.err = null; this.precisaClique = false; this.ultimo = new Date();
       } catch (e) {
         console.error(e);
         this.dirty.add('tudo');
         if (e.conflito) { this.err = 'O arquivo mudou em outro aparelho.'; this.busy = false; status(); conflito(); return; }
-        if (e.semSessao) this.err = 'Sessão expirada. Entre de novo com a Microsoft.';
-        else { this.err = 'Sem conexão com o OneDrive. Salvo neste aparelho; tentando de novo.'; this.offline = true; clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 15000); }
+        if (e.semSessao) { this.precisaClique = true; this.err = 'Acesso ao Google expirou. Salvo neste aparelho.'; }
+        else { this.err = 'Sem conexão com o Drive. Salvo neste aparelho; tentando de novo.'; clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 15000); }
       }
     } else { this.err = null; this.ultimo = new Date(); }
     this.busy = false; status();
   },
+
+  /* chamado por um clique do usuário: garante token e envia o que estiver pendente */
+  async reconectar() {
+    const tk = await Auth.acessar(false);
+    if (!tk) { toast('Não consegui entrar na conta Google'); return false; }
+    this.mode = 'drive'; this.precisaClique = false; this.err = null; status();
+    await sincronizar();
+    return true;
+  },
 };
+
 function quandoTxt(d) {
   if (!d) return '';
   const s = Math.round((Date.now() - d.getTime()) / 1000);
@@ -1390,10 +1443,11 @@ function quandoTxt(d) {
 function status() {
   const el = $('#save-state'); if (!el) return;
   el.classList.toggle('err', !!Store.err);
-  if (Store.err) el.innerHTML = esc(Store.err);
+  if (Store.precisaClique) el.innerHTML = `Alterações guardadas aqui.<br><button class="btn link small" data-act="conectar">Reconectar ao Google Drive</button>`;
+  else if (Store.err) el.innerHTML = esc(Store.err);
   else if (Store.busy || Store.dirty.size) el.innerHTML = 'Salvando…';
-  else if (Store.mode === 'onedrive') el.innerHTML = `<b>Salvo no OneDrive</b> ${quandoTxt(Store.ultimo)}`;
-  else el.innerHTML = `<b>Salvo neste aparelho</b><br><button class="btn link small" data-act="conectar">Conectar ao OneDrive</button>`;
+  else if (Store.mode === 'drive') el.innerHTML = `<b>Salvo no Google Drive</b> ${quandoTxt(Store.ultimo)}`;
+  else el.innerHTML = `<b>Salvo neste aparelho</b><br><button class="btn link small" data-act="conectar">Conectar ao Google Drive</button>`;
 }
 window.addEventListener('beforeunload', e => { if (Store.dirty.size || Store.busy) e.preventDefault(); });
 window.addEventListener('online', () => { if (Store.dirty.size) Store.flush(); });
@@ -1401,48 +1455,90 @@ window.addEventListener('online', () => { if (Store.dirty.size) Store.flush(); }
 async function conflito() {
   const d = $('#conf');
   d.innerHTML = `<form method="dialog"><div class="dlg-head"><h2>Versões diferentes</h2></div>
-  <div class="dlg-body"><p class="full" style="margin:0">A Caderneta no OneDrive foi alterada em outro aparelho depois que esta página abriu. Escolha qual versão vale.</p></div>
-  <div class="dlg-foot"><button class="btn" value="nuvem">Usar a do OneDrive</button><button class="btn primary" value="aqui">Manter a deste aparelho</button></div></form>`;
+  <div class="dlg-body"><p class="full" style="margin:0">A Caderneta no Google Drive foi alterada em outro aparelho depois que esta página abriu. Escolha qual versão vale.</p></div>
+  <div class="dlg-foot"><button class="btn" value="nuvem">Usar a do Drive</button><button class="btn primary" value="aqui">Manter a deste aparelho</button></div></form>`;
   d.showModal();
   d.onclose = async () => {
     if (d.returnValue === 'aqui') { Store.err = null; Store.flush('forcar'); }
-    else { try { const j = await Cloud.baixar(); if (j) { aplicar(j); toast('Versão do OneDrive carregada'); } Store.err = null; status(); } catch (e) { toast('Não consegui baixar agora'); } }
+    else { try { const j = await Cloud.baixar(); if (j && j.cfg) { aplicar(j); Store.cache(j); Store.dirty.clear(); Store.ultimo = new Date(); toast('Versão do Drive carregada'); } Store.err = null; status(); } catch (e) { toast('Não consegui baixar agora'); } }
   };
+}
+
+/* compara o que está no Drive com o que está aqui */
+async function sincronizar() {
+  let j = null;
+  try { j = await Cloud.baixar(); }
+  catch (e) {
+    console.error(e);
+    if (e.semSessao) { Store.precisaClique = true; Store.mode = 'drive'; }
+    else Store.err = 'Não consegui ler o Drive: ' + e.message;
+    status(); return;
+  }
+  Store.mode = 'drive';
+  const local = S.ready ? Store.pacote() : Store.lerCache();
+  const tLocal = local && local.cfg && local.cfg.atualizado;
+  const tDrive = j && j.cfg && j.cfg.atualizado;
+  if (j && j.cfg) {
+    if (!local || !tLocal || (tDrive && tDrive > tLocal && !Store.dirty.size)) {
+      aplicar(j); Store.cache(j); Store.ultimo = new Date(); Store.err = null; status(); return;
+    }
+    if (Store.dirty.size && tDrive && tLocal && tDrive > tLocal) { Store.err = null; status(); conflito(); return; }
+    if (!S.ready) aplicar(local);
+    if (tLocal && (!tDrive || tLocal > tDrive)) { Store.mark(); return; }
+    Store.ultimo = new Date(); Store.err = null; status(); return;
+  }
+  // nada no Drive ainda
+  if (local && local.cfg) { if (!S.ready) aplicar(local); Store.mark(); toast('Enviando seus dados para o Drive'); return; }
+  if (!S.ready) telaPrimeiraVez();
+  status();
 }
 
 /* ===== Telas de entrada ===== */
 function telaConfig(msg) {
   $('#app').innerHTML = `<div class="welcome">
     <h1>Caderneta</h1>
-    <p>Para guardar os dados no seu OneDrive, informe o <b>ID do aplicativo (cliente)</b> que você criou no portal da Microsoft.</p>
+    <p>Para guardar os dados no seu Google Drive, informe o <b>ID do cliente</b> que você criou no Google Cloud Console.</p>
     ${msg ? `<div class="notice">${esc(msg)}</div>` : ''}
-    <label class="field" style="margin:16px 0">ID do aplicativo (cliente)<input id="cid" value="${esc(Auth.clientId)}" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off" spellcheck="false"></label>
-    <p class="small muted">Endereço a cadastrar no portal como URI de redirecionamento (tipo <b>SPA</b>):<br><code>${esc(Auth.redirect)}</code></p>
+    <label class="field" style="margin:16px 0">ID do cliente<input id="cid" value="${esc(Auth.clientId)}" placeholder="000000000000-xxxxxxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label>
+    <p class="small muted">Endereço a cadastrar no Google Cloud como <b>origem JavaScript autorizada</b>, sem barra no final:<br><code>${esc(Auth.origem)}</code></p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
-      <button class="btn primary" id="entrar">Salvar e entrar com a Microsoft</button>
+      <button class="btn primary" id="entrar">Salvar e entrar com o Google</button>
       <button class="btn" id="so-local">Usar só neste aparelho</button></div>
     <div id="save-state" class="save-state" style="padding:14px 0"></div></div>`;
-  $('#entrar').onclick = () => { const v = $('#cid').value.trim(); if (!/^[0-9a-f-]{30,40}$/i.test(v)) { toast('ID do aplicativo inválido'); return; } Auth.clientId = v; Auth.entrar(); };
-  $('#so-local').onclick = () => boot(true);
+  $('#entrar').onclick = async () => {
+    const v = $('#cid').value.trim();
+    if (!/\.apps\.googleusercontent\.com$/.test(v)) { toast('O ID do cliente termina em .apps.googleusercontent.com'); return; }
+    Auth.clientId = v;
+    const tk = await Auth.acessar(false);
+    if (!tk) { telaConfig('Não consegui entrar. Confira se o ID está certo e se o endereço acima está cadastrado como origem JavaScript autorizada.'); return; }
+    $('#app').innerHTML = '<div class="empty" style="padding-top:120px">Carregando…</div>';
+    await sincronizar();
+  };
+  $('#so-local').onclick = () => abrirLocal();
 }
 function telaLogin(msg) {
   $('#app').innerHTML = `<div class="welcome">
     <h1>Caderneta</h1>
-    <p>Cartões, empréstimos e planejamento, com os dados guardados no seu OneDrive.</p>
+    <p>Cartões, empréstimos e planejamento, com os dados guardados no seu Google Drive.</p>
     ${msg ? `<div class="notice">${esc(msg)}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
-      <button class="btn primary" id="entrar">Entrar com a Microsoft</button>
+      <button class="btn primary" id="entrar">Entrar com o Google</button>
       <button class="btn" id="so-local">Usar só neste aparelho</button>
-      <button class="btn link" id="trocar">Trocar o ID do aplicativo</button></div>
+      <button class="btn link" id="trocar">Trocar o ID do cliente</button></div>
     <div id="save-state" class="save-state" style="padding:14px 0"></div></div>`;
-  $('#entrar').onclick = () => Auth.entrar();
-  $('#so-local').onclick = () => boot(true);
+  $('#entrar').onclick = async () => {
+    const tk = await Auth.acessar(false);
+    if (!tk) { telaLogin('O Google não liberou o acesso. Se uma janela foi bloqueada, permita janelas pop-up para este endereço e tente de novo.'); return; }
+    $('#app').innerHTML = '<div class="empty" style="padding-top:120px">Carregando…</div>';
+    await sincronizar();
+  };
+  $('#so-local').onclick = () => abrirLocal();
   $('#trocar').onclick = () => telaConfig();
 }
 function telaPrimeiraVez() {
   $('#app').innerHTML = `<div class="welcome">
     <h1>Tudo pronto</h1>
-    <p>Sua conta está conectada${Store.mode === 'onedrive' ? ', e ainda não há uma Caderneta no OneDrive' : ''}. Importe um backup (o arquivo <b>.json</b> exportado pela Caderneta) ou comece do zero.</p>
+    <p>${Store.mode === 'drive' ? 'Sua conta está conectada, e ainda não há uma Caderneta no Drive.' : 'Vamos começar.'} Importe um backup (o arquivo <b>.json</b> exportado pela Caderneta) ou comece do zero.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
       <label class="btn primary">Importar backup (.json)<input type="file" accept=".json,application/json" id="imp-json" hidden></label>
       <button class="btn" id="zero">Começar do zero</button></div>
@@ -1460,38 +1556,29 @@ function iniciar() {
   for (const it of S.cfg.plan.itens) { if (!it.id || vistos.has(it.id)) { it.id = uid('i'); Store.dirty.add('tudo'); } vistos.add(it.id); }
   shell(); render();
 }
-
-async function boot(soLocal) {
-  $('#app').innerHTML = '<div class="empty" style="padding-top:120px">Carregando…</div>';
-  if (!soLocal) {
-    const entrou = await Auth.voltaDoLogin();
-    if (!Auth.clientId) return telaConfig(Auth.erroLogin);
-    if (!Auth.conectado) return telaLogin(Auth.erroLogin);
-    Store.mode = 'onedrive';
-    let j = null;
-    try { j = await Cloud.baixar(); }
-    catch (e) {
-      console.error(e);
-      if (e.semSessao) { Auth.sair(); return telaLogin('Sua sessão expirou. Entre de novo.'); }
-      const cache = Store.lerCache();
-      if (cache) { Store.offline = true; Store.err = 'Sem conexão com o OneDrive. Usando a cópia deste aparelho.'; aplicar(cache); return; }
-      return telaLogin('Não consegui falar com o OneDrive: ' + e.message);
-    }
-    if (j && j.cfg) {
-      const cache = Store.lerCache();
-      aplicar(j); Store.ultimo = new Date(); Store.cache(j);
-      if (cache && cache.cfg && cache.cfg.atualizado && j.cfg.atualizado && cache.cfg.atualizado > j.cfg.atualizado) {
-        toast('Havia alterações não enviadas neste aparelho'); Store.mark();
-      }
-      return;
-    }
-    const cache = Store.lerCache();
-    if (cache && cache.cfg) { aplicar(cache); Store.mark(); toast('Enviando seus dados para o OneDrive'); return; }
-    return telaPrimeiraVez();
-  }
+function abrirLocal() {
   Store.mode = 'local';
   const cache = Store.lerCache();
   if (cache && cache.cfg) aplicar(cache); else telaPrimeiraVez();
+}
+
+async function boot() {
+  $('#app').innerHTML = '<div class="empty" style="padding-top:120px">Carregando…</div>';
+  const cache = Store.lerCache();
+  if (!Auth.clientId) { if (cache && cache.cfg) { abrirLocal(); status(); } else telaConfig(); return; }
+  if (!Auth.jaConectou) { if (cache && cache.cfg) { abrirLocal(); status(); } else telaLogin(); return; }
+  // já conectou antes: abre com a cópia local e tenta renovar o acesso sem interromper
+  if (cache && cache.cfg) {
+    aplicar(cache); Store.mode = 'drive'; Store.precisaClique = true; status();
+    const tk = await Auth.acessar(true);
+    if (!tk) { status(); return; }
+    Store.precisaClique = false; status();
+    await sincronizar();
+    return;
+  }
+  const tk = await Auth.acessar(true);
+  if (!tk) return telaLogin();
+  await sincronizar();
 }
 document.addEventListener('change', async e => {
   if (S.ready || e.target.id !== 'imp-json') return;
