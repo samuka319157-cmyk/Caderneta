@@ -700,11 +700,17 @@ function vResumo() {
   <section class="sec">
     <div class="sec-head"><h2>Cobranças mensais</h2><p>Assinaturas que caem nos cartões. A data é calculada pelo fechamento de cada cartão.</p><div class="spacer"></div><button class="btn small" data-view="ajustes">Editar lista</button></div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Cobrança</th><th>Cartão</th><th class="n">Valor</th><th>Data da cobrança</th><th>Situação</th></tr></thead>
-      <tbody>${R.cobr.map(c => `<tr><td>${esc(c.n)}</td><td><span class="dot" style="background:${meioCor(c.m)}"></span>${esc(c.m)}</td><td class="n">${brl(c.v)}</td><td>${dataBR(c.data)}</td><td><span class="chip ${c.status === 'a cobrar' ? 'warn' : ''}">${cap(c.status)}</span></td></tr>`).join('') || '<tr><td colspan="5" class="empty">Nenhuma cobrança cadastrada.</td></tr>'}</tbody>
-      <tfoot><tr><td>Total</td><td></td><td class="n">${brl(R.cobrTotal)}</td><td></td><td></td></tr></tfoot>
+      <thead><tr><th>Cobrança</th><th>Quem paga</th><th>Cartão</th><th class="n">Valor</th><th>Data da cobrança</th><th>Situação</th></tr></thead>
+      <tbody>${R.cobr.map(c => `<tr><td>${esc(c.n)}</td><td class="wrap small">${quemPaga(c)}</td><td><span class="dot" style="background:${meioCor(c.m)}"></span>${esc(c.m)}</td><td class="n">${brl(c.v)}</td><td>${dataBR(c.data)}</td><td><span class="chip ${c.status === 'a cobrar' ? 'warn' : ''}">${cap(c.status)}</span></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Nenhuma cobrança cadastrada.</td></tr>'}</tbody>
+      <tfoot><tr><td>Total</td><td></td><td></td><td class="n">${brl(R.cobrTotal)}</td><td></td><td></td></tr></tfoot>
     </table></div>
   </section>`;
+}
+
+function quemPaga(c) {
+  if (!c.rateio || !c.rateio.length) return '<span class="chip warn">sem rateio</span>';
+  const vs = [...new Set(c.rateio.map(r => r.v))];
+  return esc(c.rateio.map(r => r.d).join(', ')) + (vs.length === 1 && c.rateio.length > 1 ? ` <span class="muted">· ${brl(vs[0])} cada</span>` : '');
 }
 
 /* ===== Devedores ===== */
@@ -784,6 +790,9 @@ function textoCobranca() {
 function vLancamentos() {
   const f = S.lf; const q = f.q.trim().toLowerCase();
   let cs = S.compras.filter(c => (!f.d || c.d === f.d) && (!f.m || c.m === f.m) && (!q || c.c.toLowerCase().includes(q)));
+  // cobranças mensais: só as do mês selecionado, a menos que esteja buscando por nome
+  const nRecOcultas = q ? 0 : cs.filter(c => c.rec && Recorr.mesDe(c) !== S.mes).length;
+  if (!q) cs = cs.filter(c => !c.rec || Recorr.mesDe(c) === S.mes);
   const ultimo = c => c.p.length ? c.p[c.p.length - 1][2].slice(0, 7) : '';
   if (f.st === 'aberto') cs = cs.filter(c => ultimo(c) >= S.mes);
   if (f.st === 'mes') cs = cs.filter(c => c.p.some(p => p[2].slice(0, 7) === S.mes));
@@ -795,12 +804,12 @@ function vLancamentos() {
     const prox = rest[0];
     const ks = c.p.map(p => p[0]);
     const faixa = ks.length ? (Math.min(...ks) === Math.max(...ks) ? `${ks[0]}` : `${Math.min(...ks)}–${Math.max(...ks)}`) : '';
-    const pagas = c.p.length - rest.length;
+    const pagas = prox ? prox[0] - 1 : c.n;
     return `<div class="item click" data-compra="${c.i}" role="button" tabindex="0">
-      <div style="min-width:0"><div class="t">${esc(c.c) || '<span class="muted">(sem descrição)</span>'}</div>
+      <div style="min-width:0"><div class="t">${esc(c.c) || '<span class="muted">(sem descrição)</span>'}${c.rec ? ' <span class="chip">mensal</span>' : ''}</div>
       <div class="meta"><b style="color:var(--ink-2)">${esc(c.d)}</b> · <span class="dot" style="background:${meioCor(c.m)}"></span>${esc(c.m)} · ${dataBR(c.dt)} · parcelas ${faixa} de ${c.n}</div></div>
       <div class="amt">${brl(c.v)}<div class="meta">${prox ? `próx. ${dataBR(prox[2])} · ${brl(prox[1])}` : 'quitada'}</div></div>
-      <div class="prog"><i style="width:${c.p.length ? pagas / c.p.length * 100 : 100}%"></i></div></div>`;
+      <div class="prog"><i style="width:${c.n ? pagas / c.n * 100 : 100}%"></i></div></div>`;
   }).join('');
   const opt = (arr, sel, todos) => `<option value="">${todos}</option>` + arr.map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('');
   return `<section class="sec">
@@ -811,7 +820,7 @@ function vLancamentos() {
       <select data-lf="m" aria-label="Meio">${opt(S.cfg.meios.map(m => m.n), f.m, 'Todos os meios')}</select>
       <div class="seg">${[['aberto', 'Em aberto'], ['mes', 'Neste mês'], ['quitado', 'Quitadas'], ['todas', 'Todas']].map(([k, t]) => `<button data-act="lf-st" data-v="${k}" aria-pressed="${f.st === k}">${t}</button>`).join('')}</div>
     </div>
-    <p class="small muted" style="margin:0 0 8px">${cs.length} compras · a pagar de ${mesCurto(S.mes)} em diante: <b style="color:var(--ink)">${brl(total)}</b></p>
+    <p class="small muted" style="margin:0 0 8px">${cs.length} compras · a pagar de ${mesCurto(S.mes)} em diante: <b style="color:var(--ink)">${brl(total)}</b>${nRecOcultas ? ` · cobranças mensais de outros meses ocultas (busque pelo nome para ver)` : ''}</p>
     <div class="tbl-wrap lanc-list">${itens || '<div class="empty">Nenhuma compra encontrada.</div>'}</div>
     ${cs.length > f.lim ? `<p style="text-align:center"><button class="btn" data-act="lf-mais">Mostrar mais (${cs.length - f.lim})</button></p>` : ''}
   </section>`;
@@ -957,6 +966,9 @@ function problemas() {
   const longe = S.pags.filter(pagLonge); if (longe.length) out.push(`${longe.length} pagamentos com data distante do mês da fatura (veja “confira” em Pagamentos).`);
   const R = Core.resumo(S.cfg, S.idx, S.pags, S.mes);
   R.faturas.filter(f => f.dif != null && Math.abs(f.dif) > 1).forEach(f => out.push(`Fatura ${f.meio.n} de ${mesCurto(S.mes)} difere em ${brl(f.dif)} do calculado.`));
+  const semRat = (S.cfg.cobr || []).filter(c => !c.rateio || !c.rateio.length); if (semRat.length) out.push(`${semRat.length} cobrança(s) mensal(is) sem rateio não geram lançamentos: ${semRat.map(c => c.n).join(', ')}.`);
+  const nomesRat = new Set((S.cfg.cobr || []).flatMap(c => (c.rateio || []).map(r => r.d)).filter(n => !nomes.has(n))); if (nomesRat.size) out.push(`Rateio com devedor fora da lista: ${[...nomesRat].join(', ')}.`);
+  if (Limpeza.cfg().ativo && Store.mode !== 'drive') out.push('A limpeza automática só roda conectado ao Google Drive, para salvar a cópia antes de apagar.');
   const inativos = S.cfg.devs.filter(d => !d.a).map(d => d.n).filter(n => (S.idx.get(S.mes) || []).some(i => i.c.d === n)); if (inativos.length) out.push(`Devedores inativos com parcelas neste mês: ${inativos.join(', ')}.`);
   return out;
 }
@@ -982,7 +994,7 @@ function vAjustes() {
       ? `<button class="btn" data-act="sincronizar">Salvar agora no Drive</button><button class="btn danger" data-act="desconectar">Desconectar</button>`
       : `<button class="btn primary" data-act="conectar">Conectar ao Google Drive</button>`}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="exp-json">Exportar backup (.json)</button><button class="btn" data-act="exp-csv">Exportar parcelas (.csv)</button>
-    <label class="btn">Importar backup<input type="file" accept=".json,application/json" id="imp-json" hidden></label></div>
+    <label class="btn">Importar backup ou arquivo<input type="file" accept=".json,application/json" id="imp-json" hidden></label></div>
     ${c.atualizado ? `<p class="small muted">Última gravação: ${new Date(c.atualizado).toLocaleString('pt-BR')}</p>` : ''}</div></section>
   </div>
 
@@ -998,14 +1010,80 @@ function vAjustes() {
     <p class="small muted">Mudar fechamento ou vencimento vale para compras novas ou editadas; as já lançadas mantêm as datas.</p>
   </section>
 
-  <section class="sec"><div class="sec-head"><h2>Cobranças mensais</h2><p>Assinaturas que caem todo mês nos cartões.</p></div>
-    <div class="tbl-wrap"><table><thead><tr><th>Descrição</th><th class="n">Valor</th><th>Dia</th><th>Cartão</th><th></th></tr></thead><tbody>
-    ${(c.cobr || []).map((x, i) => `<tr><td>${inp(`cobr.${i}.n`, 'text', 'style="min-width:200px"')}</td><td style="width:120px">${inp(`cobr.${i}.v`)}</td><td style="width:70px">${inp(`cobr.${i}.d`, 'int')}</td>
+  <section class="sec"><div class="sec-head"><h2>Cobranças mensais</h2><p>Assinaturas que caem todo mês nos cartões. Cada uma vira um lançamento por pessoa do rateio, todo mês, de ${mesCurto(Recorr.janela().ini)} até ${mesCurto(Recorr.janela().fim)}.</p></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Descrição</th><th class="n">Valor</th><th>Dia</th><th>Cartão</th><th>Rateio</th><th></th></tr></thead><tbody>
+    ${(c.cobr || []).map((x, i) => {
+      const soma = (x.rateio || []).reduce((s, r) => s + (r.v || 0), 0);
+      const dif = x.rateio && x.rateio.length ? Core.r2(x.v - soma) : null;
+      return `<tr><td>${inp(`cobr.${i}.n`, 'text', 'style="min-width:200px"')}</td><td style="width:120px">${inp(`cobr.${i}.v`)}</td><td style="width:70px">${inp(`cobr.${i}.d`, 'int')}</td>
       <td><select data-bind="cobr.${i}.m" data-type="text">${c.meios.filter(m => m.t === 'cartao').map(m => `<option ${m.n === x.m ? 'selected' : ''}>${esc(m.n)}</option>`).join('')}</select></td>
-      <td><button class="btn link danger" data-act="list-del" data-k="cobr" data-i="${i}" aria-label="Excluir">${ico('trash')}</button></td></tr>`).join('')}
+      <td class="wrap small" style="min-width:220px">${quemPaga(x)}${dif && Math.abs(dif) > 0.05 ? ` <span class="chip warn" title="Valor da cobrança menos a soma do rateio">sobra ${brl(dif)}</span>` : ''}<br><button class="btn link small" data-act="rateio" data-i="${i}">Editar rateio</button></td>
+      <td><button class="btn link danger" data-act="list-del" data-k="cobr" data-i="${i}" aria-label="Excluir">${ico('trash')}</button></td></tr>`;
+    }).join('')}
     </tbody></table></div>
-    <button class="btn small" data-act="add-cobr" style="margin-top:8px">${ico('plus', 'Adicionar cobrança')}</button>
+    <div class="filters" style="margin-top:10px;align-items:end">
+      <button class="btn small" data-act="add-cobr">${ico('plus', 'Adicionar cobrança')}</button>
+      <label class="field">Gerar a partir de<input type="month" data-bind="recorr.desde" data-type="text" value="${esc(Recorr.cfg().desde)}"></label>
+      <label class="field">Meses à frente<input data-bind="recorr.meses" data-type="int" value="${Recorr.cfg().meses}" style="width:70px"></label>
+    </div>
+    <p class="small muted">Mudar valor, dia, cartão ou rateio refaz só os meses ainda não cobrados. Lançamentos mensais que você editar ou excluir à mão ficam como estão.</p>
+  </section>
+
+  <section class="sec"><div class="sec-head"><h2>Limpeza automática</h2><p>Mantém o arquivo leve removendo faturas antigas. Antes de apagar, salva uma cópia no seu Google Drive.</p></div>
+    ${vLimpeza()}
   </section>`;
+}
+
+function vLimpeza() {
+  const L = Limpeza.cfg(); const hoje = Core.todayISO(); const cur = hoje.slice(0, 7);
+  const prox = Limpeza.proxima(); const pend = L.ativo && prox <= hoje;
+  const corteAgora = Limpeza.corte(cur);
+  return `<div class="card" style="max-width:720px"><dl class="kv">
+    <dt>Ativa<small>roda no dia ${L.dia} de cada mês, na primeira vez que a Caderneta abrir conectada ao Drive</small></dt><dd><input type="checkbox" data-bind="limpeza.ativo" data-type="bool" ${L.ativo ? 'checked' : ''} aria-label="Limpeza ativa"></dd>
+    <dt>Manter os últimos<small>faturas mais antigas que isso são removidas</small></dt><dd style="width:120px"><div style="display:flex;align-items:center;gap:6px">${inp('limpeza.meses', 'int', 'style="width:56px"')}<span class="small">meses</span></div></dd>
+    <dt>Próxima execução</dt><dd>${!L.ativo ? '<span class="muted">desativada</span>' : pend ? '<span class="owed">pendente</span>' : dataBR(prox)}</dd>
+    <dt>O que sai na próxima<small>parcelas e pagamentos com fatura até ${mesNome(pend ? corteAgora : Limpeza.corte(prox.slice(0, 7)))}/${(pend ? corteAgora : Limpeza.corte(prox.slice(0, 7))).slice(0, 4)}</small></dt><dd></dd>
+  </dl>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" data-act="limpar-agora" ${Store.mode === 'drive' ? '' : 'disabled title="Conecte ao Google Drive"'}>Executar agora</button></div>
+  ${L.hist.length ? `<h3 style="margin:16px 0 6px">Histórico</h3><table><thead><tr><th>Data</th><th>Removeu até</th><th class="n">Parcelas</th><th class="n">Pagamentos</th><th>Cópia no Drive</th></tr></thead><tbody>
+    ${L.hist.map(h => `<tr><td>${dataBR(h.em)}</td><td>${mesCurto(h.corte)}</td><td class="n">${h.parc}</td><td class="n">${h.pags}</td><td class="small">${h.arq ? esc(h.arq) : '<span class="muted">nada a remover</span>'}</td></tr>`).join('')}</tbody></table>` : ''}
+  <p class="small muted" style="margin:12px 0 0">Para consultar dados antigos, baixe a cópia no seu Drive e use “Importar backup ou arquivo”. Os registros voltam até a próxima limpeza.</p></div>`;
+}
+
+function dlgRateio(i) {
+  const cob = S.cfg.cobr[i]; if (!cob) return;
+  const atual = new Map((cob.rateio || []).map(r => [r.d, r.v]));
+  const nomes = [...new Set([...devsAtivos(), ...atual.keys()])];
+  const d = $('#dlg');
+  d.innerHTML = `<form method="dialog" id="f-rat">
+    <div class="dlg-head"><h2>Rateio: ${esc(cob.n)}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
+    <div class="dlg-body">
+      <p class="full small muted" style="margin:0">Marque quem paga e quanto. Cada pessoa marcada ganha um lançamento de ${esc(cob.m)} todo mês. Inclua você (${esc(S.cfg.eu)}) se tiver uma parte.</p>
+      <div class="full" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px">
+        ${nomes.map(n => `<label style="display:flex;align-items:center;gap:8px;font-weight:600"><input type="checkbox" name="p" value="${esc(n)}" ${atual.has(n) ? 'checked' : ''}><span style="flex:1">${esc(n)}</span>
+          <input name="v-${esc(n)}" inputmode="decimal" value="${atual.has(n) ? esc(numBR(atual.get(n))) : ''}" placeholder="0,00" style="width:90px;border:1px solid var(--rule);border-radius:6px;padding:4px 6px;text-align:right;background:var(--sheet)"></label>`).join('')}
+      </div>
+      <p class="full" style="margin:0" id="rat-soma"></p>
+    </div>
+    <div class="dlg-foot"><button class="btn" type="button" id="rat-igual">Dividir igualmente</button><div class="spacer"></div>
+      <button class="btn" value="x" formnovalidate>Cancelar</button><button class="btn primary" value="ok">Salvar rateio</button></div></form>`;
+  const f = $('#f-rat');
+  const ler = () => [...f.querySelectorAll('input[name=p]:checked')].map(x => ({ d: x.value, v: parseNum(f.elements['v-' + x.value].value) }));
+  const soma = () => { const r = ler(); const s = r.reduce((a, x) => a + (isFinite(x.v) ? x.v : 0), 0); $('#rat-soma').innerHTML = `Soma: <b>${brl(s)}</b> de ${brl(cob.v)}${Math.abs(cob.v - s) > 0.05 ? ` <span class="chip warn">faltam ${brl(cob.v - s)}</span>` : ''}`; };
+  f.addEventListener('input', soma); f.addEventListener('change', soma); soma();
+  $('#rat-igual').onclick = () => {
+    const marc = [...f.querySelectorAll('input[name=p]:checked')]; if (!marc.length) { toast('Marque pelo menos uma pessoa'); return; }
+    const v = Math.round(cob.v / marc.length * 100) / 100;
+    marc.forEach(x => { f.elements['v-' + x.value].value = numBR(v); }); soma();
+  };
+  f.addEventListener('submit', e => {
+    if (e.submitter && e.submitter.value !== 'ok') return;
+    const r = ler();
+    if (r.some(x => !isFinite(x.v) || x.v <= 0)) { e.preventDefault(); toast('Informe o valor de cada pessoa marcada'); return; }
+    cob.rateio = r;
+    Recorr.regenerar(cob.id); reindex(); Store.mark(); render(); toast('Rateio salvo');
+  });
+  d.showModal();
 }
 
 /* ===== Diálogos ===== */
@@ -1062,6 +1140,7 @@ function dlgCompra(id, pre = {}) {
     if (c) {
       const antigo = 'c-' + c.dt.slice(0, 7);
       Object.assign(c, { d: fd1(f, 'dev'), m: x.meio, c: x.c, dt: x.dt, v: x.total, n: x.n, p: Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: x.total, n: x.n, inicio: x.ini, primeira: prim }) });
+      if (c.rec) c.man = true;
       Store.mark(antigo, 'c-' + c.dt.slice(0, 7));
       toast('Compra salva');
     } else {
@@ -1140,7 +1219,8 @@ document.addEventListener('click', async e => {
     case 'del-compra': {
       const c = S.compras.find(x => x.i === t.dataset.id);
       $('#dlg').close();
-      if (c && await confirmar(`Excluir “${c.c}” de ${c.d} e todas as ${c.p.length} parcelas?`)) { S.compras = S.compras.filter(x => x !== c); Store.mark('c-' + c.dt.slice(0, 7)); reindex(); render(); toast('Compra excluída'); }
+      const msg = c && c.rec ? `Excluir “${c.c}” de ${c.d} em ${mesNome(Recorr.mesDe(c))}? Essa cobrança mensal não será recriada nesse mês.` : c && `Excluir “${c.c}” de ${c.d} e todas as ${c.p.length} parcelas?`;
+      if (c && await confirmar(msg)) { Recorr.esquecer(c); S.compras = S.compras.filter(x => x !== c); Store.mark('c-' + c.dt.slice(0, 7)); reindex(); render(); toast('Compra excluída'); }
       break;
     }
     case 'dup-compra': {
@@ -1159,7 +1239,12 @@ document.addEventListener('click', async e => {
     case 'plan-add': S.cfg.plan.itens.push({ id: uid('i'), n: 'Novo gasto', b: 0, r: 0, q: ['v', 1], mn: null, dia: null, cx: '', emp: false, lk: null, fx: null }); Store.mark('cfg'); render(); break;
     case 'plan-del': { const it = S.cfg.plan.itens[+t.dataset.i]; if (await confirmar(`Excluir “${it.n}” do custo de vida?`)) { S.cfg.plan.itens.splice(+t.dataset.i, 1); Store.mark('cfg'); render(); } break; }
     case 'list-add': { const arr = getPath(S.cfg, t.dataset.k); arr.push({ n: 'Novo', v: 0 }); Store.mark('cfg'); render(); break; }
-    case 'list-del': { const arr = getPath(S.cfg, t.dataset.k); const it = arr[+t.dataset.i]; if (await confirmar(`Excluir “${it.n}”?`)) { arr.splice(+t.dataset.i, 1); Store.mark('cfg'); render(); } break; }
+    case 'list-del': {
+      const arr = getPath(S.cfg, t.dataset.k); const it = arr[+t.dataset.i];
+      const extra = t.dataset.k === 'cobr' ? ' Os lançamentos dos próximos meses dessa cobrança também serão removidos; os meses já cobrados ficam.' : '';
+      if (await confirmar(`Excluir “${it.n}”?${extra}`)) { arr.splice(+t.dataset.i, 1); if (t.dataset.k === 'cobr') { Recorr.regenerar(it.id); reindex(); } Store.mark('cfg'); render(); }
+      break;
+    }
     case 'add-dev': {
       const n = $('#novo-dev').value.trim();
       if (!n) return; if (devsTodos().some(x => x.toLowerCase() === n.toLowerCase())) { toast('Esse nome já existe'); return; }
@@ -1167,7 +1252,15 @@ document.addEventListener('click', async e => {
     }
     case 'set-eu': S.cfg.eu = t.dataset.n; Store.mark('cfg'); render(); break;
     case 'add-meio': S.cfg.meios.push({ n: 'Novo cartão', t: 'cartao', f: 1, v: 10, x: 0, cor: '#607D8B' }); Store.mark('cfg'); render(); break;
-    case 'add-cobr': S.cfg.cobr.push({ id: uid('m'), n: 'Nova cobrança', v: 0, d: 1, m: S.cfg.meios.find(m => m.t === 'cartao')?.n || '' }); Store.mark('cfg'); render(); break;
+    case 'rateio': dlgRateio(+t.dataset.i); break;
+    case 'limpar-agora': {
+      const L = Limpeza.cfg(); const pl = Limpeza.planejar(Limpeza.corte(Core.todayISO().slice(0, 7)));
+      if (!pl.nParc && !pl.nPag) { toast('Nada a remover agora'); break; }
+      if (!await confirmar(`Remover ${pl.nParc} parcelas e ${pl.nPag} pagamentos de faturas até ${mesNome(pl.corte)}/${pl.corte.slice(0, 4)}? Uma cópia será salva no seu Drive antes.`, 'Remover')) break;
+      const r = await Limpeza.talvez(true); if (r) avisoLimpeza(r);
+      break;
+    }
+    case 'add-cobr': S.cfg.cobr.push({ id: uid('m'), n: 'Nova cobrança', v: 0, d: 1, m: S.cfg.meios.find(m => m.t === 'cartao')?.n || '', rateio: [] }); Store.mark('cfg'); render(); break;
     case 'conectar': Auth.clientId ? await Store.reconectar() : telaConfig(); break;
     case 'sincronizar': await Store.flush(true); if (!Store.err) toast('Enviado ao Drive'); break;
     case 'desconectar':
@@ -1196,6 +1289,11 @@ document.addEventListener('change', async e => {
     else if (ty === 'numnull') { v = parseNum(t.value); if (!isFinite(v)) v = null; }
     else { v = parseNum(t.value); if (!isFinite(v)) v = 0; }
     setPath(S.cfg, t.dataset.bind, v);
+    if (t.dataset.bind.startsWith('cobr.')) {
+      const cob = S.cfg.cobr[+t.dataset.bind.split('.')[1]];
+      if (cob && Recorr.regenerar(cob.id)) reindex();
+    }
+    if (t.dataset.bind === 'recorr.desde' || t.dataset.bind === 'recorr.meses') { if (Recorr.gerar()) reindex(); }
     if (t.dataset.bind.startsWith('fat.')) {
       // limpa entradas vazias
       const m = t.dataset.bind.split('.');
@@ -1221,6 +1319,7 @@ document.addEventListener('change', async e => {
     S.compras.forEach(c => { if (c.d === old) { c.d = n; meses.add('c-' + c.dt.slice(0, 7)); } });
     S.pags.forEach(p => { if (p.d === old) p.d = n; });
     if (S.cfg.eu === old) S.cfg.eu = n; if (S.devSel === old) S.devSel = n;
+    Recorr.renomear(old, n);
     Store.mark('cfg', 'pag', ...meses); reindex(); render(); toast('Nome atualizado'); return;
   }
   if (t.dataset.renameMeio != null) {
@@ -1237,11 +1336,16 @@ document.addEventListener('change', async e => {
     const file = t.files[0]; if (!file) return;
     try {
       const j = JSON.parse(await file.text());
+      if (j.app === 'caderneta-arquivo') {
+        if (!await confirmar(`Trazer de volta os registros arquivados até ${mesNome(j.corte)}/${String(j.corte).slice(0, 4)} (${(j.compras || []).length} compras, ${(j.pags || []).length} pagamentos)? Eles serão removidos de novo na próxima limpeza, a menos que você desative a limpeza automática.`, 'Restaurar')) { t.value = ''; return; }
+        const r = restaurarArquivo(j);
+        reindex(); Store.mark(); render(); toast(`${r.nc} parcelas e ${r.np} pagamentos restaurados`); t.value = ''; return;
+      }
       if (j.app !== 'caderneta' || !j.cfg || !Array.isArray(j.compras)) throw new Error('formato');
       if (!await confirmar(`Substituir todos os dados atuais por este backup (${j.compras.length} compras, ${(j.pags || []).length} pagamentos)?`, 'Substituir')) return;
       const antigos = new Set(S.compras.map(c => 'c-' + c.dt.slice(0, 7)));
       S.cfg = j.cfg; S.compras = j.compras; S.pags = j.pags || [];
-      reindex(); Store.mark(...antigos); Store.markAll(); render(); toast('Backup importado');
+      reindex(); Store.mark(...antigos); Store.markAll(); render(); toast('Backup importado'); posCarga();
     } catch (err) { toast('Arquivo inválido: use um backup exportado por aqui'); }
     t.value = '';
   }
@@ -1253,6 +1357,238 @@ document.addEventListener('input', e => {
   if (t.dataset.lf === 'q') { S.lf.q = t.value; S.lf.lim = 80; clearTimeout(S._qt); S._qt = setTimeout(() => { render(); const el = $('[data-lf="q"]'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 250); }
 });
 
+
+</script>
+<script>
+/* ===== Rotinas automáticas: cobranças mensais e limpeza ===== */
+
+/* Rateio inferido dos lançamentos de setembro/2026. Só é aplicado uma vez,
+   a cobranças que ainda não têm rateio e mantêm o valor original. */
+const RATEIO_INICIAL = {
+  m1: { v: 65.39, r: [['Beto', 65.39]] },
+  m2: { v: 50, r: [['Lidia', 50]] },
+  m3: { v: 53.9, r: [['Anderson', 8.98], ['Beto', 8.98], ['Leandro', 8.98], ['Sam', 8.98], ['Tavares', 8.98], ['Toin', 8.98]] },
+  m4: { v: 22.45, r: [['Jandson', 5.61], ['Leandro', 5.61], ['Sam', 5.61], ['Tavares', 5.61]] },
+  m5: { v: 44.9, r: [['Lidia', 14.97], ['Sam', 14.97], ['Sara', 14.97]] },
+  m6: { v: 59.9, r: [['Endryo', 14.97], ['Leandro', 14.97], ['Sam', 14.97], ['Tavares', 14.97]] },
+  m7: { v: 12.9, r: [['Lidia', 12.9]] },
+  m8: { v: 19.9, r: [['Lidia', 19.9]] },
+  m9: { v: 250.88, r: [['Sam', 250.88]] },
+  m10: { v: 39.9, r: [['Lidia', 39.9]] },
+  m11: { v: 19.9, r: [['Lidia', 19.9]] },
+};
+/* palavras que identificam lançamentos manuais já existentes de cada cobrança */
+const CHAVE_MIGRACAO = {
+  m1: /\btim\b/i, m2: /\bvivo\b/i, m3: /youtube/i, m4: /\bhbo\b/i, m5: /netflix/i, m6: /disney|meli/i,
+  m7: /spotify/i, m8: /apple/i, m9: /seguro de vida|prudential/i, m10: /mifit/i, m11: /uber ?one/i,
+};
+
+const Recorr = {
+  cfg() {
+    const R = S.cfg.recorr ??= {};
+    R.desde ??= '2026-09'; R.meses ??= 12; R.skip ??= []; R.semeado ??= false; R.migrado ??= false;
+    return R;
+  },
+  chave(cobId, pessoa, mes) { return `${cobId}|${pessoa}|${mes}`; },
+  mesDe(c) { return c.p && c.p[0] ? c.p[0][2].slice(0, 7) : c.dt.slice(0, 7); },
+
+  janela() {
+    const R = this.cfg();
+    const cur = Core.todayISO().slice(0, 7);
+    const L = S.cfg.limpeza;
+    const primeiroMantido = L && L.ativo !== false ? Core.addMonths(cur, -(L.meses || 5)) : '0000-00';
+    return { ini: R.desde > primeiroMantido ? R.desde : primeiroMantido, fim: Core.addMonths(cur, R.meses) };
+  },
+
+  semear() {
+    const R = this.cfg(); if (R.semeado) return 0;
+    const nomes = new Set(S.cfg.devs.map(d => d.n)); let n = 0;
+    for (const cob of S.cfg.cobr || []) {
+      const s = RATEIO_INICIAL[cob.id];
+      if (!s || (cob.rateio && cob.rateio.length) || Math.abs((cob.v || 0) - s.v) > 0.01) continue;
+      cob.rateio = s.r.filter(([d]) => nomes.has(d)).map(([d, v]) => ({ d, v }));
+      if (cob.rateio.length) n++;
+    }
+    R.semeado = true;
+    return n;
+  },
+
+  /* uma vez: reaproveita lançamentos manuais que já correspondem a uma cobrança */
+  migrar() {
+    const R = this.cfg(); if (R.migrado) return 0;
+    const { ini, fim } = this.janela(); const usados = new Set(); let n = 0;
+    for (const cob of S.cfg.cobr || []) {
+      const re = CHAVE_MIGRACAO[cob.id]; if (!re || !cob.rateio) continue;
+      for (const r of cob.rateio) for (let mes = ini; mes <= fim; mes = Core.addMonths(mes, 1)) {
+        const c = S.compras.find(c => !usados.has(c) && !c.rec && c.d === r.d && c.m === cob.m && c.n === 1 && c.p.length === 1
+          && this.mesDe(c) === mes && Math.abs(c.v - r.v) < 0.02 && re.test(c.c) && !/desconto/i.test(c.c));
+        if (c) { usados.add(c); c.rec = cob.id; c.man = true; n++; }
+      }
+    }
+    R.migrado = true;
+    return n;
+  },
+
+  gerar() {
+    const R = this.cfg(); const { ini, fim } = this.janela();
+    const skip = new Set(R.skip);
+    const tem = new Set(S.compras.filter(c => c.rec).map(c => this.chave(c.rec, c.d, this.mesDe(c))));
+    let n = 0;
+    for (const cob of S.cfg.cobr || []) {
+      if (!cob.rateio || !cob.rateio.length) continue;
+      const meio = Core.meioDe(S.cfg, cob.m); if (!meio) continue;
+      for (let mes = ini; mes <= fim; mes = Core.addMonths(mes, 1)) {
+        for (const r of cob.rateio) {
+          const k = this.chave(cob.id, r.d, mes);
+          if (!r.v || tem.has(k) || skip.has(k)) continue;
+          const dt = Core.dataCobranca(S.cfg, cob, mes);
+          const venc = Core.dateIn(mes, meio.v || 15);
+          S.compras.push({ i: uid('r'), d: r.d, m: cob.m, c: cob.n, dt, v: r.v, n: 1, p: [[1, r.v, venc]], rec: cob.id });
+          tem.add(k); n++;
+        }
+      }
+    }
+    return n;
+  },
+
+  /* depois de mudar valor, dia, cartão ou rateio: refaz os meses que ainda não foram cobrados */
+  regenerar(cobId) {
+    const cob = (S.cfg.cobr || []).find(c => c.id === cobId);
+    const hoje = Core.todayISO(), cur = hoje.slice(0, 7);
+    const inicio = cob && Core.dataCobranca(S.cfg, cob, cur) > hoje ? cur : Core.addMonths(cur, 1);
+    const antes = S.compras.length;
+    S.compras = S.compras.filter(c => !(c.rec === cobId && !c.man && this.mesDe(c) >= inicio));
+    const removidos = antes - S.compras.length;
+    const R = this.cfg();
+    R.skip = R.skip.filter(k => { const [id, , m] = k.split('|'); return !(id === cobId && m >= inicio); });
+    const criados = cob ? this.gerar() : 0;
+    return removidos + criados;
+  },
+
+  renomear(old, novo) {
+    (S.cfg.cobr || []).forEach(cb => (cb.rateio || []).forEach(r => { if (r.d === old) r.d = novo; }));
+    const R = this.cfg();
+    R.skip = R.skip.map(k => { const [a, b, c] = k.split('|'); return b === old ? `${a}|${novo}|${c}` : k; });
+  },
+
+  esquecer(c) {
+    if (!c.rec) return;
+    const R = this.cfg(); const k = this.chave(c.rec, c.d, this.mesDe(c));
+    if (!R.skip.includes(k)) R.skip.push(k);
+  },
+};
+
+const Limpeza = {
+  rodando: false,
+  cfg() {
+    const L = S.cfg.limpeza ??= {};
+    L.ativo ??= true; L.meses ??= 5; L.dia ??= 15; L.ultima ??= null; L.hist ??= [];
+    return L;
+  },
+  corte(mes) { return Core.addMonths(mes, -this.cfg().meses); },
+  /* data da próxima execução; se já passou, a limpeza está pendente */
+  proxima() {
+    const L = this.cfg(); const cur = Core.todayISO().slice(0, 7);
+    return Core.dateIn(L.ultima === cur ? Core.addMonths(cur, 1) : cur, L.dia);
+  },
+  devida() {
+    const L = this.cfg(); const hoje = Core.todayISO();
+    return L.ativo && Number(hoje.slice(8, 10)) >= L.dia && L.ultima !== hoje.slice(0, 7);
+  },
+
+  planejar(corte) {
+    const compras = [], velhas = new Set();
+    for (const c of S.compras) {
+      const ps = c.p.filter(p => p[2].slice(0, 7) <= corte);
+      if (ps.length) { compras.push({ ...c, p: ps }); velhas.add(c.i); }
+    }
+    const pags = S.pags.filter(p => p.f <= corte);
+    const fat = {};
+    for (const [m, v] of Object.entries(S.cfg.fat || {})) if (m <= corte) fat[m] = v;
+    const nParc = compras.reduce((s, c) => s + c.p.length, 0);
+    return { corte, compras, velhas, pags, fat, nParc, nPag: pags.length, nFat: Object.keys(fat).length };
+  },
+
+  aplicar(pl) {
+    for (const c of S.compras) if (pl.velhas.has(c.i)) c.p = c.p.filter(p => p[2].slice(0, 7) > pl.corte);
+    S.compras = S.compras.filter(c => c.p.length);
+    const ids = new Set(pl.pags.map(p => p.i));
+    S.pags = S.pags.filter(p => !ids.has(p.i));
+    for (const m of Object.keys(pl.fat)) delete S.cfg.fat[m];
+    const R = Recorr.cfg();
+    R.skip = R.skip.filter(k => k.split('|')[2] > pl.corte);
+  },
+
+  /* roda se estiver na data (ou se forçado). Só apaga depois que a cópia foi salva no Drive. */
+  async talvez(forcar) {
+    const L = this.cfg();
+    if (!forcar && !this.devida()) return null;
+    if (Store.mode !== 'drive' || Store.precisaClique) return null;
+    if (this.rodando) return null;
+    this.rodando = true;
+    const cur = Core.todayISO().slice(0, 7);
+    try {
+      const pl = this.planejar(this.corte(cur));
+      let arq = null;
+      if (pl.nParc || pl.nPag || pl.nFat) {
+        const nome = `caderneta-arquivo-ate-${pl.corte}.json`;
+        await Cloud.criarArquivo(nome, {
+          app: 'caderneta-arquivo', versao: 1, corte: pl.corte, gerado: new Date().toISOString(),
+          compras: pl.compras, pags: pl.pags, fat: pl.fat,
+        });
+        arq = nome;
+        this.aplicar(pl);
+      }
+      L.ultima = cur;
+      L.hist.unshift({ em: Core.todayISO(), corte: pl.corte, parc: pl.nParc, pags: pl.nPag, arq });
+      L.hist = L.hist.slice(0, 12);
+      reindex(); render(); Store.mark();
+      return { ...pl, arq };
+    } catch (e) {
+      console.error(e);
+      toast('Limpeza adiada: não consegui salvar a cópia no Drive');
+      return null;
+    } finally { this.rodando = false; }
+  },
+};
+
+/* junta um arquivo de limpeza de volta aos dados atuais */
+function restaurarArquivo(j) {
+  let nc = 0, np = 0;
+  const porId = new Map(S.compras.map(c => [c.i, c]));
+  for (const c of j.compras || []) {
+    const atual = porId.get(c.i);
+    if (atual) {
+      const tem = new Set(atual.p.map(p => p[0] + '|' + p[2]));
+      for (const p of c.p) if (!tem.has(p[0] + '|' + p[2])) { atual.p.push(p); nc++; }
+      atual.p.sort((a, b) => a[0] - b[0] || a[2].localeCompare(b[2]));
+    } else { S.compras.push(c); porId.set(c.i, c); nc += c.p.length; }
+  }
+  const ids = new Set(S.pags.map(p => p.i));
+  for (const p of j.pags || []) if (!ids.has(p.i)) { S.pags.push(p); np++; }
+  for (const [m, v] of Object.entries(j.fat || {})) if (!S.cfg.fat[m]) S.cfg.fat[m] = v;
+  return { nc, np };
+}
+
+function avisoLimpeza(r) {
+  const d = $('#conf');
+  d.innerHTML = `<form method="dialog"><div class="dlg-head"><h2>Limpeza do mês concluída</h2></div>
+  <div class="dlg-body"><p class="full" style="margin:0">Foram removidas <b>${r.nParc.toLocaleString('pt-BR')}</b> parcelas e <b>${r.nPag.toLocaleString('pt-BR')}</b> pagamentos de faturas até <b>${mesNome(r.corte)}/${r.corte.slice(0, 4)}</b>.
+  ${r.arq ? `Uma cópia de tudo foi salva no seu Google Drive como <b>${esc(r.arq)}</b>.` : ''}</p>
+  <p class="full small muted" style="margin:0">Compras parceladas continuam com as parcelas que vencem depois disso.</p></div>
+  <div class="dlg-foot"><button class="btn primary" value="ok">Entendi</button></div></form>`;
+  d.showModal();
+}
+
+/* roda depois que os dados do Drive estão carregados */
+async function posCarga() {
+  if (!S.ready) return;
+  let mud = Recorr.semear() + Recorr.migrar() + Recorr.gerar();
+  if (mud) { reindex(); render(); Store.mark(); }
+  const r = await Limpeza.talvez();
+  if (r && (r.nParc || r.nPag)) avisoLimpeza(r);
+}
+setInterval(() => { if (S.ready && Store.mode === 'drive') posCarga(); }, 60 * 60 * 1000);
 
 </script>
 <script>
@@ -1395,6 +1731,18 @@ const Cloud = {
     if (!r.ok) throw new Error('Google Drive respondeu ' + r.status);
     const m = await r.json(); this.versao = m.version;
   },
+
+  /* cria um arquivo separado (cópia da limpeza); não mexe no caderneta.json */
+  async criarArquivo(nome, dados) {
+    const meta = { name: nome, mimeType: 'application/json', description: 'Registros arquivados pela limpeza automática da Caderneta' };
+    const lim = 'arq' + Math.random().toString(36).slice(2);
+    const body = `--${lim}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${lim}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(dados)}\r\n--${lim}--`;
+    const r = await this.req(`${UP}/files?uploadType=multipart&fields=id,name`, {
+      method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${lim}` }, body,
+    });
+    if (!r.ok) throw new Error('Google Drive respondeu ' + r.status);
+    return r.json();
+  },
 };
 
 /* ===== Armazenamento ===== */
@@ -1463,8 +1811,9 @@ async function conflito() {
   <div class="dlg-foot"><button class="btn" value="nuvem">Usar a do Drive</button><button class="btn primary" value="aqui">Manter a deste aparelho</button></div></form>`;
   d.showModal();
   d.onclose = async () => {
-    if (d.returnValue === 'aqui') { Store.err = null; Store.flush('forcar'); }
-    else { try { const j = await Cloud.baixar(); if (j && j.cfg) { aplicar(j); Store.cache(j); Store.dirty.clear(); Store.ultimo = new Date(); toast('Versão do Drive carregada'); } Store.err = null; status(); } catch (e) { toast('Não consegui baixar agora'); } }
+    if (d.returnValue === 'aqui') { Store.err = null; await Store.flush('forcar'); }
+    else { try { const j = await Cloud.baixar(); if (j && j.cfg) { aplicar(j); Store.cache(j); Store.dirty.clear(); Store.ultimo = new Date(); toast('Versão do Drive carregada'); } Store.err = null; status(); } catch (e) { toast('Não consegui baixar agora'); return; } }
+    await posCarga();
   };
 }
 
@@ -1484,15 +1833,15 @@ async function sincronizar() {
   const tDrive = j && j.cfg && j.cfg.atualizado;
   if (j && j.cfg) {
     if (!local || !tLocal || (tDrive && tDrive > tLocal && !Store.dirty.size)) {
-      aplicar(j); Store.cache(j); Store.ultimo = new Date(); Store.err = null; status(); return;
+      aplicar(j); Store.cache(j); Store.ultimo = new Date(); Store.err = null; status(); await posCarga(); return;
     }
     if (Store.dirty.size && tDrive && tLocal && tDrive > tLocal) { Store.err = null; status(); conflito(); return; }
     if (!S.ready) aplicar(local);
-    if (tLocal && (!tDrive || tLocal > tDrive)) { Store.mark(); return; }
-    Store.ultimo = new Date(); Store.err = null; status(); return;
+    if (tLocal && (!tDrive || tLocal > tDrive)) { Store.mark(); await posCarga(); return; }
+    Store.ultimo = new Date(); Store.err = null; status(); await posCarga(); return;
   }
   // nada no Drive ainda
-  if (local && local.cfg) { if (!S.ready) aplicar(local); Store.mark(); toast('Enviando seus dados para o Drive'); return; }
+  if (local && local.cfg) { if (!S.ready) aplicar(local); Store.mark(); toast('Enviando seus dados para o Drive'); await posCarga(); return; }
   if (!S.ready) telaPrimeiraVez();
   status();
 }
@@ -1565,7 +1914,7 @@ function iniciar() {
 function abrirLocal() {
   Store.mode = 'local';
   const cache = Store.lerCache();
-  if (cache && cache.cfg) aplicar(cache); else telaPrimeiraVez();
+  if (cache && cache.cfg) { aplicar(cache); posCarga(); } else telaPrimeiraVez();
 }
 
 async function boot() {
@@ -1592,7 +1941,7 @@ document.addEventListener('change', async e => {
   try {
     const j = JSON.parse(await e.target.files[0].text());
     if (j.app !== 'caderneta' || !j.cfg) throw 0;
-    aplicar(j); Store.mark(); toast('Backup importado');
+    aplicar(j); Store.mark(); toast('Backup importado'); await posCarga();
   } catch (err) { toast('Arquivo inválido'); }
 }, true);
 boot();
