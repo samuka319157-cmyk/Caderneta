@@ -171,6 +171,7 @@ dl.kv .tot{border-bottom:0;border-top:2px solid var(--ink);font-weight:800}
 .empty{padding:28px;text-align:center;color:var(--ink-3)}
 
 dialog{border:0;border-radius:14px;padding:0;background:var(--sheet);color:var(--ink);width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 32px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog.wide{width:min(900px,calc(100vw - 24px))}
 dialog::backdrop{background:rgba(10,20,22,.5)}
 .dlg-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--rule)}
 .dlg-body{padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px;overflow:auto;max-height:calc(100vh - 170px)}
@@ -401,19 +402,30 @@ const Core = (() => {
     const falta = alvo - acumulado;
     const mesesFaltam = falta <= 0 ? 0 : (res.aporte > 0 ? Math.ceil(falta / res.aporte) : null);
 
-    // saldo mínimo esperado hoje (mês corrente)
+    /* Conferência de saldo — sempre sobre o mês corrente, não o selecionado.
+       "A guardar" são as caixinhas que não saem da conta este mês; "saldoMin" é o
+       que ainda vai debitar. As duas partes não se sobrepõem. */
     const diaHoje = Number(hoje.slice(8, 10));
-    const apHoje = apMes(hoje.slice(0, 7));
+    const mesHoje = hoje.slice(0, 7);
+    const apHoje = apMes(mesHoje);
     const saldoItens = pessoais.filter(i => i.cx === P.ap.cxES);
     const saldoCx = saldoItens.reduce((s, i) => s + i.mensal, 0) + apHoje.e + apHoje.s;
-    const jaPagos = saldoItens.filter(i => i.dia && i.dia <= diaHoje).reduce((s, i) => s + i.mensal, 0);
-    const saldoMin = saldoCx - jaPagos - (diaHoje >= P.ap.dia ? apHoje.e + apHoje.s : 0);
-    const necessario = totalCx + saldoMin;
+    const totalCxHoje = totalCx - apSel.total + apHoje.total;
+    const aGuardar = totalCxHoje - saldoCx;
+    const pagos = saldoItens.filter(i => i.dia && i.dia <= diaHoje);
+    const jaPagos = pagos.reduce((s, i) => s + i.mensal, 0);
+    const apPago = diaHoje >= P.ap.dia;
+    const saldoMin = saldoCx - jaPagos - (apPago ? apHoje.e + apHoje.s : 0);
+    const contasPend = saldoItens.filter(i => !pagos.includes(i)).map(i => ({ n: i.n, dia: i.dia, v: i.mensal }));
+    if (!apPago && apHoje.e + apHoje.s > 0) contasPend.push({ n: 'Entrada do AP + seguro obra', dia: P.ap.dia, v: apHoje.e + apHoje.s });
+    contasPend.sort((a, b) => (a.dia || 99) - (b.dia || 99));
+    const necessario = aGuardar + saldoMin;
 
     return { itens, pessoais, empresa, custoVida, ajuda, salario, receita, gastos, sobra: receita - gastos,
       invest, outros, apSel, ap, caixinhas, totalCx,
       reserva: { alvo, acumulado, falta, mesesFaltam },
-      saldoMin, saldoCx, necessario, difSaldo: (P.saldoInf || 0) - necessario };
+      saldoMin, saldoCx, aGuardar, totalCxHoje, jaSaiu: totalCxHoje - necessario, contasPend, mesHoje,
+      necessario, difSaldo: (P.saldoInf || 0) - necessario };
   }
 
   function apTabela(A) {
@@ -558,7 +570,7 @@ async function salvarArquivo(nome, dados) {
   mostrarTexto('Copie o conteúdo', 'Não foi possível baixar o arquivo aqui. Copie o conteúdo abaixo e salve como ' + nome + '.', dados);
 }
 function mostrarTexto(titulo, sub, texto) {
-  const d = $('#dlg');
+  const d = $('#dlg'); d.className = '';
   d.innerHTML = `<form method="dialog"><div class="dlg-head"><h2>${esc(titulo)}</h2><button class="icon-btn" value="x" aria-label="Fechar">✕</button></div>
   <div class="dlg-body"><p class="full small muted" style="margin:0">${esc(sub)}</p><textarea class="full" rows="12" style="width:100%;border:1px solid var(--rule);border-radius:6px;padding:8px;background:var(--sheet-2)" readonly>${esc(texto)}</textarea></div>
   <div class="dlg-foot"><button class="btn primary" type="button" data-copy>${ico('copy', 'Copiar')}</button></div></form>`;
@@ -725,7 +737,8 @@ function vDevedores() {
   const modo = S.devModo;
   const todas = S.compras.filter(c => c.d === n).flatMap(c => c.p.map(p => ({ c, k: p[0], v: p[1], venc: p[2] })));
   let parc = modo === 'mes' ? todas.filter(i => i.venc.slice(0, 7) === S.mes) : modo === 'aberto' ? todas.filter(i => i.venc.slice(0, 7) >= S.mes) : todas;
-  parc.sort((a, b) => a.venc.localeCompare(b.venc) || a.c.dt.localeCompare(b.c.dt));
+  // dentro de cada mês de fatura, sempre em ordem de data da compra
+  parc.sort((a, b) => a.venc.slice(0, 7).localeCompare(b.venc.slice(0, 7)) || a.c.dt.localeCompare(b.c.dt) || a.c.c.localeCompare(b.c.c, 'pt-BR'));
   let pg = S.pags.filter(p => p.d === n);
   pg = modo === 'mes' ? pg.filter(p => p.f === S.mes) : modo === 'aberto' ? pg.filter(p => p.f >= S.mes) : pg;
   pg.sort((a, b) => b.dt.localeCompare(a.dt));
@@ -813,7 +826,7 @@ function vLancamentos() {
   }).join('');
   const opt = (arr, sel, todos) => `<option value="">${todos}</option>` + arr.map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('');
   return `<section class="sec">
-    <div class="sec-head"><h2>Lançamentos</h2><p>Cada compra aparece uma vez; as parcelas são geradas automaticamente.</p></div>
+    <div class="sec-head"><h2>Lançamentos</h2><p>Cada compra aparece uma vez; as parcelas são geradas automaticamente.</p><div class="spacer"></div><button class="btn small" data-act="colar">${ico('copy', 'Colar lançamentos')}</button></div>
     <div class="filters">
       <input type="search" placeholder="Buscar compra" data-lf="q" data-focus="lf-q" value="${esc(f.q)}" style="flex:1;min-width:160px">
       <select data-lf="d" aria-label="Devedor">${opt(devsTodos(), f.d, 'Todos os devedores')}</select>
@@ -948,28 +961,31 @@ function vPlanejamento() {
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>Mês</th><th class="n">Parcela entrada</th><th class="n">Parcela documento</th><th class="n">Seguro obra</th><th class="n">Total</th></tr></thead><tbody>${apRows}</tbody></table></div>
   </section>
 
-  <section class="sec"><div class="sec-head"><h2>Conferência de saldo</h2></div><div class="card" style="max-width:520px"><dl class="kv">
-    <dt>Caixinhas do mês</dt><dd>${brl(R.totalCx)}</dd>
-    <dt>Saldo mínimo esperado hoje<small>conta “${esc(P.ap.cxES)}” menos o que já venceu</small></dt><dd>${brl(R.saldoMin)}</dd>
-    <dt class="tot">Necessário</dt><dd class="tot">${brl(R.necessario)}</dd>
-    <dt>Saldo atual informado</dt><dd style="width:130px">${inp('plan.saldoInf')}</dd>
-    <dt class="tot">Diferença</dt><dd class="tot ${R.difSaldo < 0 ? 'owed' : 'paid'}">${brl(R.difSaldo)}</dd></dl></div></section>`;
+  <section class="sec"><div class="sec-head"><h2>Conferência de saldo</h2><p>Quanto você precisa ter na conta hoje, ${dataBR(Core.todayISO())}, para guardar o que planejou e ainda pagar as contas que faltam em ${mesNome(R.mesHoje)}.</p></div>
+    <div class="card" style="max-width:560px"><dl class="kv">
+    <dt>A guardar<small>caixinhas do mês que não saem da conta: ${esc(R.caixinhas.filter(c => c.n !== P.ap.cxES && c.v).slice(0, 4).map(c => c.n).join(', '))}…</small></dt><dd>${brl(R.aGuardar)}</dd>
+    <dt>Contas que ainda vão sair<small>${R.contasPend.length ? esc(R.contasPend.map(c => `${c.n} (dia ${c.dia})`).join(', ')) : 'todas as contas do mês já foram debitadas'}</small></dt><dd>${brl(R.saldoMin)}</dd>
+    <dt class="tot">Necessário na conta hoje</dt><dd class="tot">${brl(R.necessario)}</dd>
+    <dt>Saldo atual informado<small>digite quanto há na conta agora</small></dt><dd style="width:130px">${inp('plan.saldoInf')}</dd>
+    <dt class="tot">${R.difSaldo < 0 ? 'Falta' : 'Sobra'}</dt><dd class="tot ${R.difSaldo < 0 ? 'owed' : 'paid'}">${brl(Math.abs(R.difSaldo))}</dd></dl>
+    <p class="small muted" style="margin:12px 0 0">Das caixinhas de ${mesNome(R.mesHoje)} (${brl(R.totalCxHoje)}), ${brl(R.jaSaiu)} já saíram da conta este mês.</p></div></section>`;
 }
 
 /* ===== Ajustes ===== */
 function problemas() {
   const out = [];
+  const ver = (t, lista, titulo) => out.push({ t, lista, titulo });
   const nomes = new Set(devsTodos()); const meios = new Set(S.cfg.meios.map(m => m.n));
-  const semDev = S.compras.filter(c => !nomes.has(c.d)); if (semDev.length) out.push(`${semDev.length} compras com devedor fora da lista: ${[...new Set(semDev.map(c => c.d))].join(', ')}.`);
-  const semMeio = S.compras.filter(c => !meios.has(c.m)); if (semMeio.length) out.push(`${semMeio.length} compras com meio de pagamento fora da lista.`);
-  const zero = S.compras.filter(c => !c.v); if (zero.length) out.push(`${zero.length} compras com valor zero.`);
-  const longe = S.pags.filter(pagLonge); if (longe.length) out.push(`${longe.length} pagamentos com data distante do mês da fatura (veja “confira” em Pagamentos).`);
+  const semDev = S.compras.filter(c => !nomes.has(c.d)); if (semDev.length) ver(`${semDev.length} compras com devedor fora da lista: ${[...new Set(semDev.map(c => c.d))].join(', ')}.`, semDev, 'Compras com devedor fora da lista');
+  const semMeio = S.compras.filter(c => !meios.has(c.m)); if (semMeio.length) ver(`${semMeio.length} compras com meio de pagamento fora da lista.`, semMeio, 'Compras com meio fora da lista');
+  const zero = S.compras.filter(c => !c.v); if (zero.length) ver(`${zero.length} compra(s) com valor zero.`, zero, 'Compras com valor zero');
+  const longe = S.pags.filter(pagLonge); if (longe.length) out.push({ t: `${longe.length} pagamentos com data distante do mês da fatura.`, view: 'pagamentos' });
   const R = Core.resumo(S.cfg, S.idx, S.pags, S.mes);
-  R.faturas.filter(f => f.dif != null && Math.abs(f.dif) > 1).forEach(f => out.push(`Fatura ${f.meio.n} de ${mesCurto(S.mes)} difere em ${brl(f.dif)} do calculado.`));
-  const semRat = (S.cfg.cobr || []).filter(c => !c.rateio || !c.rateio.length); if (semRat.length) out.push(`${semRat.length} cobrança(s) mensal(is) sem rateio não geram lançamentos: ${semRat.map(c => c.n).join(', ')}.`);
-  const nomesRat = new Set((S.cfg.cobr || []).flatMap(c => (c.rateio || []).map(r => r.d)).filter(n => !nomes.has(n))); if (nomesRat.size) out.push(`Rateio com devedor fora da lista: ${[...nomesRat].join(', ')}.`);
-  if (Limpeza.cfg().ativo && Store.mode !== 'drive') out.push('A limpeza automática só roda conectado ao Google Drive, para salvar a cópia antes de apagar.');
-  const inativos = S.cfg.devs.filter(d => !d.a).map(d => d.n).filter(n => (S.idx.get(S.mes) || []).some(i => i.c.d === n)); if (inativos.length) out.push(`Devedores inativos com parcelas neste mês: ${inativos.join(', ')}.`);
+  R.faturas.filter(f => f.dif != null && Math.abs(f.dif) > 1).forEach(f => out.push({ t: `Fatura ${f.meio.n} de ${mesCurto(S.mes)} difere em ${brl(f.dif)} do calculado.`, view: 'resumo' }));
+  const semRat = (S.cfg.cobr || []).filter(c => !c.rateio || !c.rateio.length); if (semRat.length) out.push({ t: `${semRat.length} cobrança(s) mensal(is) sem rateio não geram lançamentos: ${semRat.map(c => c.n).join(', ')}.` });
+  const nomesRat = new Set((S.cfg.cobr || []).flatMap(c => (c.rateio || []).map(r => r.d)).filter(n => !nomes.has(n))); if (nomesRat.size) out.push({ t: `Rateio com devedor fora da lista: ${[...nomesRat].join(', ')}.` });
+  if (Limpeza.cfg().ativo && Store.mode !== 'drive') out.push({ t: 'A limpeza automática só roda conectado ao Google Drive, para salvar a cópia antes de apagar.' });
+  const inativos = S.cfg.devs.filter(d => !d.a).map(d => d.n).filter(n => (S.idx.get(S.mes) || []).some(i => i.c.d === n)); if (inativos.length) out.push({ t: `Devedores inativos com parcelas neste mês: ${inativos.join(', ')}.` });
   return out;
 }
 function vAjustes() {
@@ -977,7 +993,7 @@ function vAjustes() {
   const usoDev = {}; S.compras.forEach(x => usoDev[x.d] = (usoDev[x.d] || 0) + 1);
   return `
   <section class="sec"><div class="sec-head"><h2>Verificação</h2></div>
-    ${prob.length ? prob.map(p => `<div class="notice">${esc(p)}</div>`).join('') : '<div class="card small">Nenhum problema encontrado nos dados.</div>'}</section>
+    ${prob.length ? prob.map((p, i) => `<div class="notice">${esc(p.t)}${p.lista ? ` <button class="btn link small" data-act="ver-prob" data-i="${i}">Ver e corrigir</button>` : p.view ? ` <button class="btn link small" data-view="${p.view}">Abrir</button>` : ''}</div>`).join('') : '<div class="card small">Nenhum problema encontrado nos dados.</div>'}</section>
   <div class="grid2">
   <section class="sec"><div class="sec-head"><h2>Devedores</h2><p>Inativos somem das listas, mas o histórico fica.</p></div>
     <div class="tbl-wrap"><table><thead><tr><th>Nome</th><th>Ativo</th><th class="n">Compras</th><th></th></tr></thead><tbody>
@@ -1052,6 +1068,7 @@ function vLimpeza() {
 
 function dlgRateio(i) {
   const cob = S.cfg.cobr[i]; if (!cob) return;
+  $('#dlg').className = '';
   const atual = new Map((cob.rateio || []).map(r => [r.d, r.v]));
   const nomes = [...new Set([...devsAtivos(), ...atual.keys()])];
   const d = $('#dlg');
@@ -1086,10 +1103,132 @@ function dlgRateio(i) {
   d.showModal();
 }
 
+/* ===== Lista de compras num popup (usada pelos avisos da Verificação) ===== */
+function dlgLista(titulo, compras) {
+  const d = $('#dlg'); d.className = 'wide';
+  const ord = [...compras].sort((x, y) => y.dt.localeCompare(x.dt));
+  d.innerHTML = `<form method="dialog">
+    <div class="dlg-head"><h2>${esc(titulo)}</h2><button class="icon-btn" value="x" aria-label="Fechar">✕</button></div>
+    <div class="dlg-body"><p class="full small muted" style="margin:0">Toque em uma linha para abrir, corrigir ou excluir.</p>
+      <div class="full tbl-wrap"><table><thead><tr><th>Compra</th><th>Devedor</th><th>Data</th><th>Meio</th><th class="n">Valor</th></tr></thead>
+      <tbody>${ord.map(c => `<tr class="click" data-compra="${c.i}"><td class="wrap">${esc(c.c) || '<span class="muted">(sem descrição)</span>'}</td><td>${esc(c.d)}</td><td>${dataBR(c.dt)}</td><td>${esc(c.m)}</td><td class="n">${brl(c.v)}</td></tr>`).join('')}</tbody></table></div>
+    </div><div class="dlg-foot"><button class="btn primary" value="x">Fechar</button></div></form>`;
+  d.showModal();
+}
+
+/* ===== Colar lançamentos ===== */
+function acharNome(lista, v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (!s) return null;
+  return lista.find(x => x.toLowerCase() === s) || lista.find(x => x.toLowerCase().replace(/[^a-z]/g, '') === s.replace(/[^a-z]/g, '')) || null;
+}
+function dataDoTexto(v) {
+  if (v == null || v === '') return Core.todayISO();
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${Core.pad(+m[2])}-${Core.pad(+m[3])}`;
+  m = s.match(/^(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?$/);
+  if (m) { const y = m[3] ? (m[3].length === 2 ? '20' + m[3] : m[3]) : Core.todayISO().slice(0, 4); return `${y}-${Core.pad(+m[2])}-${Core.pad(+m[1])}`; }
+  return null;
+}
+function parseLote(txt) {
+  let s = String(txt || '').trim().replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim();
+  if (!s) return { erro: 'Cole o bloco que o Claude gerou.' };
+  let j; try { j = JSON.parse(s); } catch (e) { return { erro: 'Não consegui ler o texto. Ele precisa ser o bloco em JSON gerado pelo Claude.' }; }
+  if (Array.isArray(j)) j = { compras: j };
+  if (!j || typeof j !== 'object') return { erro: 'Formato não reconhecido.' };
+  const nomes = devsTodos(), meios = S.cfg.meios.map(m => m.n);
+  const padraoMeio = acharNome(meios, 'Inter') || (S.cfg.meios.find(m => m.t === 'cartao') || S.cfg.meios[0] || {}).n;
+  const compras = [], pags = [];
+  for (const o of (j.compras || j.lancamentos || [])) {
+    const brutos = Array.isArray(o.d ?? o.devedor) ? (o.d ?? o.devedor) : [o.d ?? o.devedor];
+    const devs = brutos.map(x => acharNome(nomes, x));
+    const descr = String(o.c ?? o.compra ?? o.descricao ?? '').trim();
+    const meioBruto = o.m ?? o.meio ?? o.cartao;
+    const meio = meioBruto ? acharNome(meios, meioBruto) : padraoMeio;
+    const dt = dataDoTexto(o.dt ?? o.data);
+    const v = parseNum(o.v ?? o.valor);
+    const n = Math.max(1, parseInt(o.n ?? o.parcelas ?? 1) || 1);
+    const erros = [];
+    if (!descr) erros.push('falta a descrição');
+    brutos.forEach((x, i) => { if (!devs[i]) erros.push(`devedor “${x ?? ''}” não existe`); });
+    if (!meio) erros.push(`meio “${meioBruto}” não existe`);
+    if (!dt) erros.push('data inválida');
+    if (!isFinite(v) || !v) erros.push('valor inválido');
+    compras.push({ devs, descr, meio, dt, v, n, erros, prim: o.primeira ?? o.venc ?? null });
+  }
+  for (const o of (j.pags || j.pagamentos || [])) {
+    const dev = acharNome(nomes, o.d ?? o.devedor);
+    const dt = dataDoTexto(o.dt ?? o.data);
+    const v = parseNum(o.v ?? o.valor);
+    let f = String(o.f ?? o.fatura ?? '').trim();
+    if (/^\d{4}-\d{1,2}$/.test(f)) f = f.slice(0, 4) + '-' + Core.pad(+f.slice(5));
+    else f = dt ? dt.slice(0, 7) : '';
+    const meio = String(o.m ?? o.meio ?? 'Pix').trim() || 'Pix';
+    const erros = [];
+    if (!dev) erros.push(`devedor “${o.d ?? o.devedor ?? ''}” não existe`);
+    if (!dt) erros.push('data inválida');
+    if (!isFinite(v) || !v) erros.push('valor inválido');
+    pags.push({ dev, dt, v, f, meio, erros });
+  }
+  if (!compras.length && !pags.length) return { erro: 'O bloco não trouxe nenhuma compra nem pagamento.' };
+  return { compras, pags };
+}
+function dlgColar() {
+  const d = $('#dlg'); d.className = 'wide';
+  d.innerHTML = `<form method="dialog" id="f-colar">
+    <div class="dlg-head"><h2>Colar lançamentos</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
+    <div class="dlg-body">
+      <p class="full small muted" style="margin:0">Peça as compras ao Claude, copie o bloco que ele devolver e cole aqui. A prévia mostra o que será lançado.</p>
+      <textarea class="full" id="lote" rows="7" placeholder='{"app":"caderneta-lote","compras":[{"d":"Lidia","m":"Inter","c":"Farmácia","dt":"22/09/2026","v":150,"n":3}]}' style="width:100%;border:1px solid var(--rule);border-radius:6px;padding:8px;background:var(--sheet-2);font-family:ui-monospace,monospace;font-size:13px"></textarea>
+      <div class="full" id="lote-prev"></div>
+    </div>
+    <div class="dlg-foot"><button class="btn" type="button" id="lote-colar">Colar da área de transferência</button><div class="spacer"></div>
+      <button class="btn" value="x" formnovalidate>Cancelar</button><button class="btn primary" value="ok" id="lote-ok" disabled>Lançar</button></div></form>`;
+  const f = $('#f-colar'); let lote = null;
+  const prev = () => {
+    lote = parseLote($('#lote').value);
+    const el = $('#lote-prev'); const ok = $('#lote-ok');
+    if (lote.erro) { el.innerHTML = $('#lote').value.trim() ? `<div class="notice">${esc(lote.erro)}</div>` : ''; ok.disabled = true; return; }
+    const bons = lote.compras.filter(c => !c.erros.length), bonsP = lote.pags.filter(p => !p.erros.length);
+    const linhas = lote.compras.map(c => {
+      const venc = !c.erros.length ? Core.gerarParcelas(S.cfg, { meio: c.meio, data: c.dt, total: c.v, n: c.n, primeira: c.prim })[0][2] : null;
+      return `<tr class="${c.erros.length ? 'dim' : ''}"><td class="wrap">${esc(c.descr) || '—'}</td><td>${esc(c.devs.filter(Boolean).join(' + ')) || '—'}</td><td>${esc(c.meio || '—')}</td><td>${c.dt ? dataBR(c.dt) : '—'}</td><td class="n">${isFinite(c.v) ? brl(c.v) : '—'}</td><td class="n">${c.n}x</td>
+      <td class="small">${c.erros.length ? `<span class="owed">${esc(c.erros.join('; '))}</span>` : `1ª em ${dataBR(venc)}${c.devs.length > 1 ? ` · ${brl(c.v / c.devs.length)} cada` : ''}`}</td></tr>`;
+    }).join('');
+    const linhasP = lote.pags.map(p => `<tr class="${p.erros.length ? 'dim' : ''}"><td class="wrap">Pagamento</td><td>${esc(p.dev || '—')}</td><td>${esc(p.meio)}</td><td>${p.dt ? dataBR(p.dt) : '—'}</td><td class="n">${isFinite(p.v) ? brl(p.v) : '—'}</td><td class="n">fatura ${p.f ? mesCurto(p.f) : '—'}</td><td class="small">${p.erros.length ? `<span class="owed">${esc(p.erros.join('; '))}</span>` : 'abate a fatura'}</td></tr>`).join('');
+    el.innerHTML = `<div class="tbl-wrap" style="max-height:240px;overflow:auto"><table><thead><tr><th>Descrição</th><th>Devedor</th><th>Meio</th><th>Data</th><th class="n">Valor</th><th class="n">Parc.</th><th>Situação</th></tr></thead><tbody>${linhas}${linhasP}</tbody></table></div>
+      <p class="small muted" style="margin:8px 0 0">${bons.length} compra(s) e ${bonsP.length} pagamento(s) prontos${lote.compras.length - bons.length + lote.pags.length - bonsP.length ? ` · ${lote.compras.length - bons.length + lote.pags.length - bonsP.length} com problema serão ignorados` : ''}.</p>`;
+    ok.disabled = !bons.length && !bonsP.length;
+  };
+  f.addEventListener('input', prev);
+  $('#lote-colar').onclick = async () => {
+    try { $('#lote').value = await navigator.clipboard.readText(); prev(); }
+    catch (e) { toast('Cole com Ctrl+V na caixa'); $('#lote').focus(); }
+  };
+  f.addEventListener('submit', e => {
+    if (e.submitter && e.submitter.value !== 'ok') return;
+    if (!lote || lote.erro) { e.preventDefault(); return; }
+    let nc = 0, np = 0;
+    for (const c of lote.compras.filter(x => !x.erros.length)) {
+      const cada = c.v / c.devs.length;
+      for (const dev of c.devs) {
+        S.compras.push({ i: uid('c'), d: dev, m: c.meio, c: c.descr, dt: c.dt, v: cada, n: c.n,
+          p: Core.gerarParcelas(S.cfg, { meio: c.meio, data: c.dt, total: cada, n: c.n, primeira: c.prim }) });
+        nc++;
+      }
+    }
+    for (const p of lote.pags.filter(x => !x.erros.length)) { S.pags.push({ i: uid('p'), d: p.dev, m: p.meio, dt: p.dt, v: p.v, f: p.f }); np++; }
+    reindex(); Store.mark(); render();
+    toast(`${nc} lançamento(s)${np ? ` e ${np} pagamento(s)` : ''} adicionados`);
+  });
+  d.showModal(); setTimeout(() => $('#lote').focus(), 30);
+}
+
 /* ===== Diálogos ===== */
 function dlgCompra(id, pre = {}) {
   const c = id ? S.compras.find(x => x.i === id) : null;
-  const d = $('#dlg');
+  const d = $('#dlg'); d.className = '';
   const meios = S.cfg.meios;
   const v = c ? { d: [c.d], m: c.m, c: c.c, dt: c.dt, total: c.v, n: c.n, ini: Math.min(...c.p.map(p => p[0])), prim: c.p[0] && c.p[0][2] }
     : { d: pre.d ? [pre.d] : [], m: pre.m || meios[0].n, c: pre.c || '', dt: pre.dt || Core.todayISO(), total: pre.total ?? '', n: pre.n || 1, ini: 1, prim: '' };
@@ -1158,7 +1297,7 @@ const fd1 = (f, k) => new FormData(f).get(k);
 
 function dlgPag(id, pre = {}) {
   const p = id ? S.pags.find(x => x.i === id) : null;
-  const d = $('#dlg');
+  const d = $('#dlg'); d.className = '';
   const v = p || { d: pre.d || '', m: 'Pix', dt: Core.todayISO(), v: pre.v ?? '', f: S.mes };
   const devOpts = devsAtivos().filter(n => n !== S.cfg.eu); if (p && !devOpts.includes(p.d)) devOpts.push(p.d);
   const metodos = ['Pix', 'Dinheiro', 'Transferência', 'Desconto']; if (p && !metodos.includes(p.m)) metodos.push(p.m);
@@ -1253,6 +1392,8 @@ document.addEventListener('click', async e => {
     case 'set-eu': S.cfg.eu = t.dataset.n; Store.mark('cfg'); render(); break;
     case 'add-meio': S.cfg.meios.push({ n: 'Novo cartão', t: 'cartao', f: 1, v: 10, x: 0, cor: '#607D8B' }); Store.mark('cfg'); render(); break;
     case 'rateio': dlgRateio(+t.dataset.i); break;
+    case 'colar': dlgColar(); break;
+    case 'ver-prob': { const p = problemas()[+t.dataset.i]; if (p && p.lista) dlgLista(p.titulo, p.lista); break; }
     case 'limpar-agora': {
       const L = Limpeza.cfg(); const pl = Limpeza.planejar(Limpeza.corte(Core.todayISO().slice(0, 7)));
       if (!pl.nParc && !pl.nPag) { toast('Nada a remover agora'); break; }
