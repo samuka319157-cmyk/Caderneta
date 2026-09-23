@@ -1043,7 +1043,9 @@ function vAjustes() {
       <button class="btn small" data-act="add-cobr">${ico('plus', 'Adicionar cobrança')}</button>
       <label class="field">Gerar a partir de<input type="month" data-bind="recorr.desde" data-type="text" value="${esc(Recorr.cfg().desde)}"></label>
       <label class="field">Meses à frente<input data-bind="recorr.meses" data-type="int" value="${Recorr.cfg().meses}" style="width:70px"></label>
+      <button class="btn small" data-act="duplicados">${ico('copy', 'Procurar duplicados')}</button>
     </div>
+    ${(() => { const n = Recorr.suspeitos().length; return n ? `<div class="notice" style="margin-top:10px">${n} cobrança${n > 1 ? 's' : ''} mensa${n > 1 ? 'is' : 'l'} aparece${n > 1 ? 'm' : ''} mais de uma vez no mesmo mês. <button class="btn link" data-act="duplicados">Ver e resolver</button></div>` : ''; })()}
     <p class="small muted">Mudar valor, dia, cartão ou rateio refaz só os meses ainda não cobrados. Lançamentos mensais que você editar ou excluir à mão ficam como estão.</p>
   </section>
 
@@ -1116,6 +1118,25 @@ function dlgLista(titulo, compras) {
       <tbody>${ord.map(c => `<tr class="click" data-compra="${c.i}"><td class="wrap">${esc(c.c) || '<span class="muted">(sem descrição)</span>'}</td><td>${esc(c.d)}</td><td>${dataBR(c.dt)}</td><td>${esc(c.m)}</td><td class="n">${brl(c.v)}</td></tr>`).join('')}</tbody></table></div>
     </div><div class="dlg-foot"><button class="btn primary" value="x">Fechar</button></div></form>`;
   d.showModal();
+}
+
+/* ===== Cobranças mensais repetidas ===== */
+function dlgDuplicados() {
+  const grupos = Recorr.suspeitos();
+  const d = $('#dlg'); d.className = 'wide';
+  const corpo = grupos.length ? grupos.map((g, gi) => {
+    const linhas = g.cands.map(c => `<tr>
+      <td class="wrap">${esc(c.c) || '<span class="muted">(sem descrição)</span>'}${c.rec ? ' <span class="chip">mensal</span>' : ''}${c.rec && !c.man ? ' <span class="chip">criado pela rotina</span>' : ''}</td>
+      <td>${dataBR(c.dt)}</td><td class="n">${brl(c.v)}</td>
+      <td><div class="row-actions"><button type="button" class="btn link" data-act="dup-abrir" data-id="${c.i}">Abrir</button><button type="button" class="btn link danger" data-act="dup-del" data-id="${c.i}" data-g="${gi}">Excluir</button></div></td></tr>`).join('');
+    return `<div class="card full" style="margin-bottom:10px"><h3 style="margin:0 0 6px">${esc(g.cob.n)} · ${esc(g.pessoa)} · fatura ${mesCurto(g.mes)}/${g.mes.slice(0, 4)}</h3>
+      <table><thead><tr><th>Descrição</th><th>Compra</th><th class="n">Valor</th><th></th></tr></thead><tbody>${linhas}</tbody></table></div>`;
+  }).join('') : '<p class="full" style="margin:0">Nenhuma cobrança mensal repetida. Cada assinatura aparece uma vez por pessoa em cada fatura.</p>';
+  d.innerHTML = `<form method="dialog">
+    <div class="dlg-head"><h2>Cobranças mensais repetidas</h2><button class="icon-btn" value="x" aria-label="Fechar">✕</button></div>
+    <div class="dlg-body">${grupos.length ? `<p class="full small muted" style="margin:0 0 4px">Mesma assinatura, mesma pessoa e mesma fatura aparecendo mais de uma vez. Deixe a que estiver certa e exclua a outra — o mês excluído não é recriado pela rotina.</p>` : ''}${corpo}</div>
+    <div class="dlg-foot"><button class="btn primary" value="x">Fechar</button></div></form>`;
+  if (!d.open) d.showModal();
 }
 
 /* ===== Colar lançamentos ===== */
@@ -1395,6 +1416,15 @@ document.addEventListener('click', async e => {
     case 'set-eu': S.cfg.eu = t.dataset.n; Store.mark('cfg'); render(); break;
     case 'add-meio': S.cfg.meios.push({ n: 'Novo cartão', t: 'cartao', f: 1, v: 10, x: 0, cor: '#607D8B' }); Store.mark('cfg'); render(); break;
     case 'rateio': dlgRateio(+t.dataset.i); break;
+    case 'duplicados': dlgDuplicados(); break;
+    case 'dup-abrir': { const id = t.dataset.id; $('#dlg').close(); setTimeout(() => dlgCompra(id), 60); break; }
+    case 'dup-del': {
+      const c = S.compras.find(x => x.i === t.dataset.id); if (!c) break;
+      if (!await confirmar(`Excluir “${c.c}” de ${c.d}, fatura de ${mesNome(Recorr.mesDe(c))}? A rotina não vai recriar esse mês.`)) break;
+      Recorr.esquecer(c); S.compras = S.compras.filter(x => x !== c);
+      reindex(); Store.mark(); render(); dlgDuplicados(); toast('Lançamento excluído');
+      break;
+    }
     case 'colar': dlgColar(); break;
     case 'conferir': dlgConferencia(t.dataset.m, S.mes); break;
     case 'fat-abrir': case 'fat-lancar': case 'fat-valor': case 'fat-data': case 'fat-excluir':
@@ -1440,7 +1470,7 @@ document.addEventListener('change', async e => {
       const cob = S.cfg.cobr[+t.dataset.bind.split('.')[1]];
       if (cob && Recorr.regenerar(cob.id)) reindex();
     }
-    if (t.dataset.bind === 'recorr.desde' || t.dataset.bind === 'recorr.meses') { if (Recorr.gerar()) reindex(); }
+    if (t.dataset.bind === 'recorr.desde' || t.dataset.bind === 'recorr.meses') { if (Recorr.sincronizar().mudou) reindex(); }
     if (t.dataset.bind.startsWith('fat.')) {
       // limpa entradas vazias
       const m = t.dataset.bind.split('.');
@@ -1798,7 +1828,7 @@ const Fat = {
     };
   },
 };
-
+if (typeof module !== 'undefined') module.exports = { Fat };
 
 /* ===== Tela de conferência ===== */
 Fat.ultimo = null;
@@ -2159,14 +2189,22 @@ const CHAVE_MIGRACAO = {
   m7: /spotify/i, m8: /apple/i, m9: /seguro de vida|prudential/i, m10: /mifit/i, m11: /uber ?one/i,
 };
 
+/* palavras sem valor para comparar descrições */
+const PALAVRAS_VAZIAS = new Set(['plano', 'planos', 'assinatura', 'mensalidade', 'conta', 'para', 'com', 'dos', 'das', 'familia', 'family', 'gados', 'premium', 'mensal']);
+const semAcento = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const palavrasDe = s => semAcento(s).replace(/[^a-z0-9]+/g, ' ').split(' ').filter(w => w.length > 2 && !PALAVRAS_VAZIAS.has(w));
+
 const Recorr = {
   cfg() {
     const R = S.cfg.recorr ??= {};
-    R.desde ??= '2026-09'; R.meses ??= 12; R.skip ??= []; R.semeado ??= false; R.migrado ??= false;
+    R.desde ??= '2026-09'; R.meses ??= 12; R.skip ??= []; R.semeado ??= false;
     return R;
   },
   chave(cobId, pessoa, mes) { return `${cobId}|${pessoa}|${mes}`; },
   mesDe(c) { return c.p && c.p[0] ? c.p[0][2].slice(0, 7) : c.dt.slice(0, 7); },
+  /* chave da vaga que este lançamento ocupa. Fica gravada em c.rk, então editar
+     data ou valor não "libera" a vaga nem faz a rotina criar outro no lugar. */
+  chaveDe(c) { return c.rk || (c.rec ? this.chave(c.rec, c.d, this.mesDe(c)) : null); },
 
   janela() {
     const R = this.cfg();
@@ -2174,6 +2212,39 @@ const Recorr = {
     const L = S.cfg.limpeza;
     const primeiroMantido = L && L.ativo !== false ? Core.addMonths(cur, -(L.meses || 5)) : '0000-00';
     return { ini: R.desde > primeiroMantido ? R.desde : primeiroMantido, fim: Core.addMonths(cur, R.meses) };
+  },
+
+  /* todas as vagas (cobrança × pessoa × mês) da janela atual */
+  vagas() {
+    const { ini, fim } = this.janela(); const out = [];
+    for (const cob of S.cfg.cobr || []) {
+      if (!cob.rateio || !cob.rateio.length) continue;
+      if (!Core.meioDe(S.cfg, cob.m)) continue;
+      for (let mes = ini; mes <= fim; mes = Core.addMonths(mes, 1))
+        for (const r of cob.rateio) if (r.v) out.push({ cob, r, mes, k: this.chave(cob.id, r.d, mes) });
+    }
+    return out;
+  },
+
+  /* índice pessoa|cartão|mês da fatura → lançamentos de 1 parcela */
+  porVaga() {
+    const ix = new Map();
+    for (const c of S.compras) {
+      if (c.n !== 1 || !c.p || c.p.length !== 1) continue;
+      const k = `${c.d}|${c.m}|${this.mesDe(c)}`;
+      let a = ix.get(k); if (!a) ix.set(k, a = []); a.push(c);
+    }
+    return ix;
+  },
+
+  /* 0 = nada a ver; 2+ = com certeza é a mesma assinatura */
+  parecido(desc, cob) {
+    const re = CHAVE_MIGRACAO[cob.id];
+    if (re && re.test(desc)) return 3;
+    const A = palavrasDe(desc), B = palavrasDe(cob.n);
+    let n = 0;
+    for (const a of A) for (const b of B) if (a === b || (a.length >= 4 && b.startsWith(a)) || (b.length >= 4 && a.startsWith(b))) { n++; break; }
+    return n;
   },
 
   semear() {
@@ -2189,42 +2260,100 @@ const Recorr = {
     return n;
   },
 
-  /* uma vez: reaproveita lançamentos manuais que já correspondem a uma cobrança */
-  migrar() {
-    const R = this.cfg(); if (R.migrado) return 0;
-    const { ini, fim } = this.janela(); const usados = new Set(); let n = 0;
-    for (const cob of S.cfg.cobr || []) {
-      const re = CHAVE_MIGRACAO[cob.id]; if (!re || !cob.rateio) continue;
-      for (const r of cob.rateio) for (let mes = ini; mes <= fim; mes = Core.addMonths(mes, 1)) {
-        const c = S.compras.find(c => !usados.has(c) && !c.rec && c.d === r.d && c.m === cob.m && c.n === 1 && c.p.length === 1
-          && this.mesDe(c) === mes && Math.abs(c.v - r.v) < 0.02 && re.test(c.c) && !/desconto/i.test(c.c));
-        if (c) { usados.add(c); c.rec = cob.id; c.man = true; n++; }
-      }
+  /* Liga lançamentos que já existem às vagas, em vez de criar outro igual ao lado.
+     Roda sempre (não é migração de uma vez só): é o que impede a duplicação quando
+     um rateio é criado ou mexido depois que os lançamentos do mês já foram feitos. */
+  adotar() {
+    const vagas = this.vagas(); let n = 0;
+    const ocupadas = new Set(S.compras.map(c => c.rk).filter(Boolean));
+
+    // 1) lançamentos da própria cobrança que ainda não têm vaga gravada (inclui os
+    //    que tiveram a data corrigida e caíram em outro mês de fatura)
+    for (const tol of [0, 1]) for (const s of vagas) {
+      if (ocupadas.has(s.k)) continue;
+      const c = S.compras.find(c => c.rec === s.cob.id && !c.rk && c.d === s.r.d
+        && Math.abs(Core.monthDiff(this.mesDe(c), s.mes)) <= tol);
+      if (c) { c.rk = s.k; ocupadas.add(s.k); }
     }
-    R.migrado = true;
+
+    // 2) lançamentos soltos (feitos à mão) que são claramente a assinatura do mês
+    const ix = this.porVaga();
+    for (const s of vagas) {
+      let melhor = null, nota = 0;
+      for (const c of ix.get(`${s.r.d}|${s.cob.m}|${s.mes}`) || []) {
+        if (c.rec || c.rk) continue;
+        if (c.v <= 0 || Math.abs(c.v - s.r.v) > 0.02) continue;
+        if (/desconto|estorno/i.test(c.c)) continue;
+        const q = this.parecido(c.c, s.cob);
+        if (q > nota) { nota = q; melhor = c; }
+      }
+      if (melhor) { melhor.rec = s.cob.id; melhor.rk = s.k; melhor.man = true; n++; }
+    }
     return n;
   },
 
+  /* Duas linhas na mesma vaga = duplicata. Some só a que a própria rotina criou;
+     o que você lançou ou editou à mão nunca é apagado aqui. */
+  duplicados() {
+    const grupos = new Map();
+    for (const c of S.compras) {
+      const k = this.chaveDe(c); if (!k) continue;
+      let a = grupos.get(k); if (!a) grupos.set(k, a = []); a.push(c);
+    }
+    const fora = [];
+    for (const arr of grupos.values()) {
+      if (arr.length < 2) continue;
+      arr.sort((a, b) => (b.man ? 1 : 0) - (a.man ? 1 : 0));
+      for (const c of arr.slice(1)) if (c.rec && !c.man) fora.push(c);
+    }
+    return fora;
+  },
+  limparDuplicados() {
+    const fora = this.duplicados(); if (!fora.length) return fora;
+    const set = new Set(fora);
+    S.compras = S.compras.filter(c => !set.has(c));
+    return fora;
+  },
+
+  /* olhada mais solta, para a tela de ajustes: mesma pessoa, mesmo cartão, mesma
+     fatura e descrição da mesma assinatura — mesmo que o valor não bata. */
+  suspeitos() {
+    const out = [], vistos = new Set(); const ix = this.porVaga();
+    for (const s of this.vagas()) {
+      const perto = Math.max(0.05, s.r.v * 0.35);
+      const cands = (ix.get(`${s.r.d}|${s.cob.m}|${s.mes}`) || []).filter(c => this.chaveDe(c) === s.k
+        || (!c.rec && Math.abs(c.v - s.r.v) <= perto && this.parecido(c.c, s.cob) >= 2));
+      if (cands.length < 2) continue;
+      const id = cands.map(c => c.i).sort().join(',');
+      if (vistos.has(id)) continue;
+      vistos.add(id);
+      out.push({ cob: s.cob, pessoa: s.r.d, mes: s.mes, cands });
+    }
+    return out;
+  },
+
   gerar() {
-    const R = this.cfg(); const { ini, fim } = this.janela();
+    const R = this.cfg();
     const skip = new Set(R.skip);
-    const tem = new Set(S.compras.filter(c => c.rec).map(c => this.chave(c.rec, c.d, this.mesDe(c))));
+    const tem = new Set(S.compras.map(c => this.chaveDe(c)).filter(Boolean));
     let n = 0;
-    for (const cob of S.cfg.cobr || []) {
-      if (!cob.rateio || !cob.rateio.length) continue;
-      const meio = Core.meioDe(S.cfg, cob.m); if (!meio) continue;
-      for (let mes = ini; mes <= fim; mes = Core.addMonths(mes, 1)) {
-        for (const r of cob.rateio) {
-          const k = this.chave(cob.id, r.d, mes);
-          if (!r.v || tem.has(k) || skip.has(k)) continue;
-          const dt = Core.dataCobranca(S.cfg, cob, mes);
-          const venc = Core.dateIn(mes, meio.v || 15);
-          S.compras.push({ i: uid('r'), d: r.d, m: cob.m, c: cob.n, dt, v: r.v, n: 1, p: [[1, r.v, venc]], rec: cob.id });
-          tem.add(k); n++;
-        }
-      }
+    for (const s of this.vagas()) {
+      if (tem.has(s.k) || skip.has(s.k)) continue;
+      const meio = Core.meioDe(S.cfg, s.cob.m);
+      const dt = Core.dataCobranca(S.cfg, s.cob, s.mes);
+      const venc = Core.dateIn(s.mes, meio.v || 15);
+      S.compras.push({ i: uid('r'), d: s.r.d, m: s.cob.m, c: s.cob.n, dt, v: s.r.v, n: 1, p: [[1, s.r.v, venc]], rec: s.cob.id, rk: s.k });
+      tem.add(s.k); n++;
     }
     return n;
+  },
+
+  /* passada completa: liga o que já existe, tira duplicata e completa o que falta */
+  sincronizar() {
+    const adotados = this.adotar();
+    const fora = this.limparDuplicados();
+    const criados = this.gerar();
+    return { adotados, removidos: fora, criados, mudou: adotados + fora.length + criados };
   },
 
   /* depois de mudar valor, dia, cartão ou rateio: refaz os meses que ainda não foram cobrados */
@@ -2237,19 +2366,21 @@ const Recorr = {
     const removidos = antes - S.compras.length;
     const R = this.cfg();
     R.skip = R.skip.filter(k => { const [id, , m] = k.split('|'); return !(id === cobId && m >= inicio); });
-    const criados = cob ? this.gerar() : 0;
-    return removidos + criados;
+    const r = cob ? this.sincronizar() : { mudou: 0 };
+    return removidos + r.mudou;
   },
 
   renomear(old, novo) {
     (S.cfg.cobr || []).forEach(cb => (cb.rateio || []).forEach(r => { if (r.d === old) r.d = novo; }));
+    const troca = k => { const [a, b, c] = k.split('|'); return b === old ? `${a}|${novo}|${c}` : k; };
+    S.compras.forEach(c => { if (c.rk) c.rk = troca(c.rk); });
     const R = this.cfg();
-    R.skip = R.skip.map(k => { const [a, b, c] = k.split('|'); return b === old ? `${a}|${novo}|${c}` : k; });
+    R.skip = R.skip.map(troca);
   },
 
   esquecer(c) {
-    if (!c.rec) return;
-    const R = this.cfg(); const k = this.chave(c.rec, c.d, this.mesDe(c));
+    const k = this.chaveDe(c); if (!k) return;
+    const R = this.cfg();
     if (!R.skip.includes(k)) R.skip.push(k);
   },
 };
@@ -2357,12 +2488,37 @@ function avisoLimpeza(r) {
 }
 
 /* roda depois que os dados do Drive estão carregados */
+function avisoDuplicados(fora) {
+  const porMes = new Map();
+  for (const c of fora) { const m = Recorr.mesDe(c); porMes.set(m, (porMes.get(m) || 0) + 1); }
+  const meses = [...porMes.entries()].sort().map(([m, n]) => `${mesCurto(m)} (${n})`).join(', ');
+  const total = fora.reduce((s, c) => s + c.v, 0);
+  const d = $('#conf');
+  d.innerHTML = `<form method="dialog"><div class="dlg-head"><h2>Cobranças mensais duplicadas</h2></div>
+  <div class="dlg-body"><p class="full" style="margin:0">Encontrei <b>${fora.length}</b> lançamento${fora.length > 1 ? 's' : ''} de cobrança mensal repetido${fora.length > 1 ? 's' : ''}, somando <b>${brl(total)}</b>, e removi a cópia criada automaticamente. O lançamento que você tinha feito continua lá.</p>
+  <p class="full small muted" style="margin:0">Por mês de fatura: ${esc(meses)}.</p>
+  <div class="tbl-wrap full" style="max-height:240px"><table><thead><tr><th>Pessoa</th><th>Descrição</th><th>Fatura</th><th class="n">Valor</th></tr></thead><tbody>
+  ${fora.slice(0, 60).map(c => `<tr><td>${esc(c.d)}</td><td>${esc(c.c)}</td><td>${mesCurto(Recorr.mesDe(c))}</td><td class="n">${brl(c.v)}</td></tr>`).join('')}
+  </tbody></table></div>${fora.length > 60 ? `<p class="full small muted" style="margin:0">…e mais ${fora.length - 60}.</p>` : ''}</div>
+  <div class="dlg-foot"><button class="btn primary" value="ok">Entendi</button></div></form>`;
+  d.showModal();
+}
+
 async function posCarga() {
   if (!S.ready) return;
-  let mud = Recorr.semear() + Recorr.migrar() + Recorr.gerar();
-  if (mud) { reindex(); render(); Store.mark(); }
-  const r = await Limpeza.talvez();
-  if (r && (r.nParc || r.nPag)) avisoLimpeza(r);
+  const sem = Recorr.semear();
+  const r = Recorr.sincronizar();
+  if (sem + r.mudou) { reindex(); render(); Store.mark(); }
+  const lim = await Limpeza.talvez();
+  const fila = [];
+  if (r.removidos.length) fila.push(() => avisoDuplicados(r.removidos));
+  if (lim && (lim.nParc || lim.nPag)) fila.push(() => avisoLimpeza(lim));
+  const proximo = () => {
+    const f = fila.shift(); if (!f) return;
+    f();
+    $('#conf').addEventListener('close', () => setTimeout(proximo, 80), { once: true });
+  };
+  proximo();
 }
 setInterval(() => { if (S.ready && Store.mode === 'drive') posCarga(); }, 60 * 60 * 1000);
 
