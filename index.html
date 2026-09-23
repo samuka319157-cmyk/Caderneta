@@ -639,7 +639,8 @@ function vResumo() {
     <td class="n" style="width:130px">${inp(`fat.${S.mes}.${f.meio.n}.i`, 'numnull', 'placeholder="valor no app"')}</td>
     <td class="n">${f.pend ? brl(f.pend) : '—'}</td>
     <td class="n" style="width:120px">${inp(`fat.${S.mes}.${f.meio.n}.p`, 'num', 'placeholder="0,00"')}</td>
-    <td class="n ${difCls}" title="Calculado − informado − assinaturas a cobrar − pago">${f.dif == null ? '—' : brl(f.dif)}</td></tr>`;
+    <td class="n ${difCls}" title="Calculado − informado − assinaturas a cobrar − pago">${f.dif == null ? '—' : brl(f.dif)}</td>
+    <td><button class="btn link small" data-act="conferir" data-m="${esc(f.meio.n)}">Conferir PDF</button></td></tr>`;
   }).join('');
 
   // próximos 6 meses
@@ -682,10 +683,10 @@ function vResumo() {
   <section class="sec">
     <div class="sec-head"><h2>Conferência das faturas</h2><p>Digite o valor que aparece no app do banco. A diferença considera as assinaturas que ainda vão cair.</p></div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Cartão</th><th class="n">Calculado</th><th class="n">Informado</th><th class="n">Assinaturas a cobrar</th><th class="n">Pago</th><th class="n">Diferença</th></tr></thead>
+      <thead><tr><th>Cartão</th><th class="n">Calculado</th><th class="n">Informado</th><th class="n">Assinaturas a cobrar</th><th class="n">Pago</th><th class="n">Diferença</th><th></th></tr></thead>
       <tbody>${fatRows}
       <tr><td><span class="dot" style="background:${meioCor('Dinheiro')}"></span><b>Dinheiro</b> <span class="muted small">emprestado</span></td><td class="n">${brl(R.dinheiro.calc)}</td><td class="n muted">—</td><td class="n muted">—</td>
-      <td class="n">${inp(`fat.${S.mes}.Dinheiro.p`, 'num', 'placeholder="recebido"')}</td><td class="n ${cls(R.dinheiro.falta)}" title="Esperado − recebido">${brl(R.dinheiro.falta)}</td></tr></tbody>
+      <td class="n">${inp(`fat.${S.mes}.Dinheiro.p`, 'num', 'placeholder="recebido"')}</td><td class="n ${cls(R.dinheiro.falta)}" title="Esperado − recebido">${brl(R.dinheiro.falta)}</td><td></td></tr></tbody>
     </table></div>
   </section>
 
@@ -772,6 +773,7 @@ function vDevedores() {
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:-12px 0 22px">
         <button class="btn primary" data-act="cobrar">${ico('copy', 'Copiar cobrança')}</button>
+        <button class="btn" data-act="imagem">${ico('copy', 'Exportar imagem')}</button>
         <button class="btn" data-act="novo-pag" data-d="${esc(n)}" data-v="${falta > 0 ? Core.r2(falta) : ''}">${ico('plus', 'Registrar pagamento')}</button>
         <button class="btn" data-act="nova-compra" data-d="${esc(n)}">${ico('plus', 'Nova compra')}</button>
       </div>
@@ -1231,7 +1233,7 @@ function dlgCompra(id, pre = {}) {
   const d = $('#dlg'); d.className = '';
   const meios = S.cfg.meios;
   const v = c ? { d: [c.d], m: c.m, c: c.c, dt: c.dt, total: c.v, n: c.n, ini: Math.min(...c.p.map(p => p[0])), prim: c.p[0] && c.p[0][2] }
-    : { d: pre.d ? [pre.d] : [], m: pre.m || meios[0].n, c: pre.c || '', dt: pre.dt || Core.todayISO(), total: pre.total ?? '', n: pre.n || 1, ini: 1, prim: '' };
+    : { d: pre.d ? [pre.d] : [], m: pre.m || meios[0].n, c: pre.c || '', dt: pre.dt || Core.todayISO(), total: pre.total ?? '', n: pre.n || 1, ini: pre.ini || 1, prim: '' };
   const devOpts = devsAtivos();
   if (c && !devOpts.includes(c.d)) devOpts.push(c.d);
   d.innerHTML = `<form method="dialog" id="f-compra">
@@ -1370,6 +1372,7 @@ document.addEventListener('click', async e => {
     case 'so-aberto': S.soAberto = t.checked; render(); break;
     case 'devmodo': S.devModo = t.dataset.v; render(); break;
     case 'cobrar': mostrarTexto('Cobrança de ' + S.devSel, 'Revise e envie pelo WhatsApp.', textoCobranca()); break;
+    case 'imagem': dlgImagem(S.devSel, S.mes); break;
     case 'lf-st': S.lf.st = t.dataset.v; S.lf.lim = 80; render(); break;
     case 'lf-mais': S.lf.lim += 120; render(); break;
     case 'pf-per': S.pf.per = t.dataset.v; render(); break;
@@ -1393,6 +1396,9 @@ document.addEventListener('click', async e => {
     case 'add-meio': S.cfg.meios.push({ n: 'Novo cartão', t: 'cartao', f: 1, v: 10, x: 0, cor: '#607D8B' }); Store.mark('cfg'); render(); break;
     case 'rateio': dlgRateio(+t.dataset.i); break;
     case 'colar': dlgColar(); break;
+    case 'conferir': dlgConferencia(t.dataset.m, S.mes); break;
+    case 'fat-abrir': case 'fat-lancar': case 'fat-valor': case 'fat-data': case 'fat-excluir':
+      await acaoConferencia(a, t.dataset.i); break;
     case 'ver-prob': { const p = problemas()[+t.dataset.i]; if (p && p.lista) dlgLista(p.titulo, p.lista); break; }
     case 'limpar-agora': {
       const L = Limpeza.cfg(); const pl = Limpeza.planejar(Limpeza.corte(Core.todayISO().slice(0, 7)));
@@ -1498,6 +1504,635 @@ document.addEventListener('input', e => {
   if (t.dataset.lf === 'q') { S.lf.q = t.value; S.lf.lim = 80; clearTimeout(S._qt); S._qt = setTimeout(() => { render(); const el = $('[data-lf="q"]'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 250); }
 });
 
+
+</script>
+<script>
+/* ===== Leitura das faturas em PDF e conferência com os lançamentos ===== */
+const PDFJS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const MES3 = { JAN: 1, FEV: 2, MAR: 3, ABR: 4, MAI: 5, JUN: 6, JUL: 7, AGO: 8, SET: 9, OUT: 10, NOV: 11, DEZ: 12 };
+
+const Fat = {
+  lib: null,
+  async carregar() {
+    if (window.pdfjsLib) return window.pdfjsLib;
+    if (!this.lib) this.lib = new Promise((ok, err) => {
+      const s = document.createElement('script');
+      s.src = PDFJS_SRC;
+      s.onload = () => { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; } catch (e) { } ok(window.pdfjsLib); };
+      s.onerror = () => err(new Error('Não consegui carregar o leitor de PDF. Verifique a conexão.'));
+      document.head.appendChild(s);
+    });
+    return this.lib;
+  },
+
+  /* texto do PDF em linhas, juntando os pedaços pela posição vertical */
+  async linhasDoPDF(arquivo) {
+    const pdfjs = await this.carregar();
+    const doc = await pdfjs.getDocument({ data: await arquivo.arrayBuffer() }).promise;
+    const linhas = [];
+    for (let p = 1; p <= doc.numPages; p++) {
+      const pag = await doc.getPage(p);
+      const txt = await pag.getTextContent();
+      const porY = new Map();
+      for (const it of txt.items) {
+        if (!it.str || !it.str.trim()) continue;
+        const y = Math.round(it.transform[5]);
+        let achou = null;
+        for (const k of porY.keys()) if (Math.abs(k - y) <= 2) { achou = k; break; }
+        const chave = achou ?? y;
+        if (!porY.has(chave)) porY.set(chave, []);
+        porY.get(chave).push({ x: it.transform[4], w: it.width || 0, s: it.str });
+      }
+      [...porY.entries()].sort((a, b) => b[0] - a[0]).forEach(([, its]) => {
+        its.sort((a, b) => a.x - b.x);
+        let txt = '';
+        its.forEach((i, k) => {
+          if (k) { const ant = its[k - 1]; if (i.x - (ant.x + ant.w) > 1) txt += ' '; }
+          txt += i.s;
+        });
+        linhas.push(txt.replace(/\s+/g, ' ').trim());
+      });
+    }
+    return linhas;
+  },
+
+  detectar(linhas) {
+    const t = linhas.join('\n').toLowerCase();
+    if (/nu pagamentos|nubank/.test(t)) return 'Nubank';
+    if (/banco inter|inter s\.a|despesas da fatura/.test(t)) return 'Inter';
+    return null;
+  },
+
+  num(s) { return Number(String(s).replace(/\./g, '').replace(',', '.')); },
+
+  /* separa "Estabelecimento;Devedor;Descrição(total) - Parcela k/n" (padrão que o Samuel usa no app do Nubank) */
+  partesNubank(desc) {
+    let k = null, n = null, total = null, resto = desc;
+    let m = resto.match(/\s*[-–]\s*Parcela\s*(\d+)\s*\/\s*(\d+)\s*$/i);
+    if (m) { k = +m[1]; n = +m[2]; resto = resto.slice(0, m.index); }
+    m = resto.match(/\(([\d.,]+)\)\s*$/);
+    if (m) { total = Number(m[1].replace(/\./g, '').replace(',', '.')); resto = resto.slice(0, m.index); }
+    const partes = resto.split(';').map(x => x.trim()).filter(x => x !== '');
+    let estab = partes[0] || resto.trim(), dev = null, texto = '';
+    if (partes.length >= 3) { dev = partes[1]; texto = partes.slice(2).join(' '); }
+    else if (partes.length === 2) {
+      const p = partes[1];
+      if (/^(dividid[ao]|recorrente|compartilhad[ao])$/i.test(p)) dev = p; else texto = p;
+    }
+    const marca = dev && /^(dividid[ao]|recorrente|compartilhad[ao])$/i.test(dev) ? dev.toLowerCase() : null;
+    if (marca) dev = null;
+    return { estab, dev, texto, total, k, n, marca };
+  },
+
+  parseNubank(linhas) {
+    const compras = [], outros = [];
+    const cab = linhas.join(' ');
+    const mf = cab.match(/FATURA \d{2} ([A-Z]{3}) (\d{4})/);
+    const mesFat = mf ? MES3[mf[1]] : null;
+    const anoFat = mf ? +mf[2] : new Date().getFullYear();
+    const rx = /^(\d{2}) ([A-Z]{3})\s+(?:[•·.]{2,}\s*(\d{4})\s+)?(.+?)\s+(−|-)?\s?R\$\s?([\d.,]+)$/;
+    let secao = null;
+    for (const l of linhas) {
+      if (/^TRANSAÇÕES/i.test(l)) { secao = 'compras'; continue; }
+      if (/^Pagamentos e Financiamentos/i.test(l)) { secao = 'outros'; continue; }
+      if (!secao) continue;
+      const m = l.match(rx);
+      if (!m) continue;
+      const [, dia, mes3, cart, desc, sinal, val] = m;
+      if (!MES3[mes3]) continue;
+      // a fatura cruza a virada do ano: mês do lançamento maior que o do fechamento vem do ano anterior
+      let a = anoFat;
+      if (mesFat && MES3[mes3] > mesFat) a -= 1;
+      const data = `${a}-${Core.pad(MES3[mes3])}-${dia}`;
+      const v = this.num(val) * (sinal ? -1 : 1);
+      const d = desc.trim();
+      const item = { data, cartao: cart || null, desc: d, valor: v, bruto: l };
+      if (secao === 'outros' || /^Estorno de |^Pagamento em |^Crédito de atraso|^Saldo em atraso|atraso|dívida encerrada|^Encerramento/i.test(d)) {
+        outros.push(item);
+      } else {
+        Object.assign(item, this.partesNubank(d));
+        compras.push(item);
+      }
+    }
+    return { banco: 'Nubank', compras, outros };
+  },
+
+  parseInter(linhas) {
+    const compras = [], outros = [];
+    const rx = /^(\d{2}) de ([a-zç]{3})\.? (\d{4})\s+(.+?)\s+(\+)?\s?R\$\s?([\d.,]+)$/i;
+    const M = { jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6, jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12 };
+    let cartao = null;
+    for (const l of linhas) {
+      const c = l.match(/^CART[ÃA]O\s+(\S+)\s*$/i);
+      if (c) { cartao = c[1]; continue; }
+      const m = l.match(rx);
+      if (!m) continue;
+      const [, dia, mes3, ano, descBruta, mais, val] = m;
+      const mm = M[mes3.toLowerCase()];
+      if (!mm) continue;
+      const data = `${ano}-${Core.pad(mm)}-${dia}`;
+      let desc = descBruta.replace(/\s+-\s*$/, '').trim();
+      let k = null, n = null;
+      const p = desc.match(/\s*\(Parcela\s*(\d+)\s*de\s*(\d+)\)\s*$/i);
+      if (p) { k = +p[1]; n = +p[2]; desc = desc.slice(0, p.index).trim(); }
+      const v = this.num(val) * (mais ? -1 : 1);
+      const item = { data, cartao, desc, valor: v, k, n, estab: desc, texto: '', dev: null, total: null, marca: null, bruto: l };
+      if (mais || /PAGAMENTO ON LINE|PAGTO DEBITO|ESTORNO|AJ EST/i.test(desc)) outros.push(item);
+      else compras.push(item);
+    }
+    return { banco: 'Inter', compras, outros };
+  },
+
+  parse(linhas) {
+    const banco = this.detectar(linhas);
+    if (!banco) return { erro: 'Não reconheci a fatura. Ela precisa ser o PDF do Nubank ou do Inter.' };
+    const r = banco === 'Nubank' ? this.parseNubank(linhas) : this.parseInter(linhas);
+    if (!r.compras.length) return { erro: 'Li o arquivo, mas não encontrei lançamentos. O PDF pode estar protegido ou ser uma imagem escaneada.' };
+    return r;
+  },
+
+  /* ===== Conferência ===== */
+  norm(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  },
+  palavras(s) { return new Set(this.norm(s).split(' ').filter(w => w.length > 2)); },
+  parecido(a, b) {
+    const A = [...this.palavras(a)], B = [...this.palavras(b)];
+    if (!A.length || !B.length) return 0;
+    const casa = (x, y) => x === y || (x.length >= 4 && y.startsWith(x)) || (y.length >= 4 && x.startsWith(y));
+    let iguais = 0;
+    for (const w of A) if (B.some(v => casa(w, v))) iguais++;
+    return iguais / Math.min(A.length, B.length);
+  },
+  dias(a, b) { return Math.round((new Date(a) - new Date(b)) / 86400000); },
+
+  /* agrupa parcelas do mesmo lançamento dividido entre várias pessoas */
+  grupos(cartao, mes) {
+    const mapa = new Map();
+    for (const i of (S.idx.get(mes) || [])) {
+      if (i.c.m !== cartao) continue;
+      const chave = `${this.norm(i.c.c)}|${i.c.dt}|${i.k}/${i.c.n}`;
+      if (!mapa.has(chave)) mapa.set(chave, []);
+      const lista = mapa.get(chave);
+      // uma compra dividida tem uma parcela por pessoa; duas do mesmo devedor são compras distintas
+      let g = lista.find(x => !x.itens.some(y => y.c.d === i.c.d));
+      if (!g) lista.push(g = { desc: i.c.c, dt: i.c.dt, k: i.k, n: i.c.n, valor: 0, itens: [] });
+      g.valor += i.v; g.itens.push(i);
+    }
+    return [...mapa.values()].flat();
+  },
+
+  /* tolerância maior em parcelados: cada banco arredonda a parcela de um jeito */
+  tol(n) { return Math.max(0.02, 0.01 * (n || 1) + 0.01); },
+
+  /* procura um conjunto de lançamentos que some o valor da linha da fatura */
+  subconjunto(cands, alvo, tol, maxN) {
+    const lista = cands.slice(0, 12).sort((a, b) => b.valor - a.valor);
+    let achado = null;
+    const busca = (i, resto, escolhidos) => {
+      if (achado) return;
+      if (escolhidos.length >= 2 && Math.abs(resto) <= tol) { achado = escolhidos.slice(); return; }
+      if (i >= lista.length || escolhidos.length >= maxN || resto < -tol) return;
+      busca(i + 1, resto - lista[i].valor, [...escolhidos, lista[i]]);
+      busca(i + 1, resto, escolhidos);
+    };
+    busca(0, alvo, []);
+    return achado;
+  },
+
+  conferir(banco, pdfCompras, cartao, mes, outros) {
+    this.outrosAtual = (outros || []).map(o => ({ ...o, usado: false }));
+    const apps = this.grupos(cartao, mes).filter(g => Math.abs(g.valor) > 0.005).map(g => ({ ...g, usado: false }));
+    const pdfs = pdfCompras.map(p => ({ ...p, usado: false }));
+    const pares = [];
+    const casar = (teste, motivo) => {
+      for (const p of pdfs) {
+        if (p.usado) continue;
+        let melhor = null, score = -1;
+        for (const a of apps) {
+          if (a.usado) continue;
+          const s = teste(p, a);
+          if (s != null && s > score) { score = s; melhor = a; }
+        }
+        if (melhor) { p.usado = melhor.usado = true; pares.push({ p, a: melhor, motivo }); }
+      }
+    };
+    const vIgual = (p, a) => Math.abs(Math.abs(p.valor) - a.valor) <= this.tol(p.n || a.n);
+    // 1. valor e data iguais  2. valor igual, data próxima  3. valor igual e descrição parecida
+    casar((p, a) => vIgual(p, a) && p.data === a.dt ? 2 + this.parecido(p.desc, a.desc) : null, 'ok');
+    casar((p, a) => vIgual(p, a) && Math.abs(this.dias(p.data, a.dt)) <= 5 ? 1 + this.parecido(p.desc, a.desc) : null, 'ok');
+    casar((p, a) => { const s = this.parecido(p.desc, a.desc); return vIgual(p, a) && s >= 0.5 ? s : null; }, 'ok');
+    // 4. descrição e data batem, valor não  5. descrição muito parecida e parcela igual
+    casar((p, a) => { const s = this.parecido(p.desc, a.desc); return p.data === a.dt && s >= 0.34 ? s : null; }, 'valor');
+    casar((p, a) => { const s = this.parecido(p.desc, a.desc); return s >= 0.7 && (p.k || 1) === a.k ? s : null; }, 'valor');
+
+    /* uma linha da fatura pode corresponder a vários lançamentos (a mesma compra dividida em itens) */
+    for (const p of pdfs) {
+      if (p.usado) continue;
+      const mesmaParcela = (a) => p.k && a.k && p.k === a.k && p.n === a.n;
+      const cands = apps.filter(a => !a.usado
+        && (Math.abs(this.dias(p.data, a.dt)) <= 3 || mesmaParcela(a))
+        && (!p.k || !a.k || mesmaParcela(a)));
+      if (cands.length < 2) continue;
+      const conj = this.subconjunto(cands, Math.abs(p.valor), this.tol(p.n), 4);
+      if (!conj) continue;
+      p.usado = true; conj.forEach(a => a.usado = true);
+      pares.push({
+        p, motivo: 'ok', a: {
+          desc: conj.map(a => a.desc).join(' + '), dt: conj[0].dt, k: conj[0].k, n: conj[0].n,
+          valor: conj.reduce((s, a) => s + a.valor, 0), itens: conj.flatMap(a => a.itens), juntos: conj.length,
+        },
+      });
+    }
+
+    /* compras estornadas dentro da própria fatura não precisam existir na Caderneta */
+    const estornadas = [];
+    for (const p of pdfs) {
+      if (p.usado) continue;
+      const e = (this.outrosAtual || []).find(o => !o.usado && o.valor < 0
+        && Math.abs(Math.abs(o.valor) - Math.abs(p.valor)) <= 0.02
+        && (this.parecido(o.desc, p.desc) >= 0.4 || Math.abs(this.dias(o.data, p.data)) <= 10));
+      if (e) { p.usado = true; e.usado = true; estornadas.push({ p, o: e }); }
+    }
+
+    /* o que sobrou na Caderneta pode ser encargo, juros ou financiamento, que a fatura lista à parte */
+    const encargos = [];
+    for (const a of apps) {
+      if (a.usado) continue;
+      const o = (this.outrosAtual || []).find(o => !o.usado && Math.abs(Math.abs(o.valor) - a.valor) <= 0.05);
+      if (o) { a.usado = true; o.usado = true; encargos.push({ a, o }); }
+    }
+
+    const div = [];
+    for (const { p, a, motivo } of pares) {
+      const dif = Core.r2(Math.abs(p.valor) - a.valor);
+      const dd = this.dias(p.data, a.dt);
+      const ignoraData = banco === 'Nubank' && (p.k || 1) > 1;
+      let mudaFatura = false;
+      if (!ignoraData && dd !== 0) {
+        const kk = a.k || 1;
+        mudaFatura = Core.vencimento(S.cfg, cartao, p.data, kk).slice(0, 7) !== Core.vencimento(S.cfg, cartao, a.dt, kk).slice(0, 7);
+      }
+      if (Math.abs(dif) > this.tol(a.n || p.n)) div.push({ tipo: 'valor', p, a, dif });
+      else if (Math.abs(dif) > 0.005) div.push({ tipo: 'valor-leve', p, a, dif });
+      else if (!ignoraData && dd !== 0 && (mudaFatura || Math.abs(dd) > 3)) div.push({ tipo: 'data', p, a, dd, mudaFatura });
+      else if (!ignoraData && dd !== 0) div.push({ tipo: 'data-leve', p, a, dd });
+      else if (p.k && a.k && (p.k !== a.k || p.n !== a.n)) div.push({ tipo: 'parcela', p, a });
+    }
+    for (const p of pdfs) if (!p.usado) div.push({ tipo: 'falta', p });
+    for (const a of apps) if (!a.usado) div.push({ tipo: 'sobra', a });
+    const ordem = { valor: 0, data: 1, parcela: 2, falta: 3, sobra: 4, 'data-leve': 9, 'valor-leve': 9 };
+    div.sort((x, y) => ordem[x.tipo] - ordem[y.tipo] || ((x.p || x.a).data || (x.a || {}).dt || '').localeCompare((y.p || y.a).data || (y.a || {}).dt || ''));
+    const leves = div.filter(d => d.tipo === 'data-leve' || d.tipo === 'valor-leve');
+    const graves = div.filter(d => d.tipo !== 'data-leve' && d.tipo !== 'valor-leve');
+    // quando muitos lançamentos erram a data para o mesmo lado, o dia de fechamento pode estar errado
+    const desvios = graves.filter(d => d.tipo === 'data').map(d => this.dias(d.p.data, d.a.dt));
+    const igual = desvios.length >= 3 && desvios.every(x => x === desvios[0]) ? desvios[0] : null;
+    return {
+      div: graves, leves, estornadas, encargos, dicaDia: igual, nPdf: pdfs.length, nApp: apps.length,
+      conferem: pares.length - graves.filter(d => d.tipo !== 'falta' && d.tipo !== 'sobra').length,
+      totalPdf: pdfs.reduce((s, p) => s + Math.abs(p.valor), 0),
+      totalApp: apps.reduce((s, a) => s + a.valor, 0),
+    };
+  },
+};
+
+
+/* ===== Tela de conferência ===== */
+Fat.ultimo = null;
+
+function dlgConferencia(cartao, mes) {
+  const d = $('#dlg'); d.className = 'wide';
+  const meio = Core.meioDe(S.cfg, cartao) || { n: cartao };
+  const cab = `<div class="dlg-head"><h2>Conferir fatura · ${esc(cartao)} · ${cap(mesNome(mes))}/${mes.slice(0, 4)}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>`;
+  const guardado = Fat.ultimo && Fat.ultimo.cartao === cartao && Fat.ultimo.mes === mes ? Fat.ultimo : null;
+
+  const pedir = () => {
+    d.innerHTML = `<form method="dialog">${cab}
+      <div class="dlg-body">
+        <p class="full small muted" style="margin:0">Escolha o PDF da fatura do ${esc(cartao)} que vence em ${cap(mesNome(mes))}. O arquivo é lido aqui no seu aparelho e não sai dele.</p>
+        <label class="btn primary full" style="justify-content:center">Escolher o PDF da fatura<input type="file" accept="application/pdf,.pdf" id="fat-pdf" hidden></label>
+        <details class="full"><summary class="small muted" style="cursor:pointer">Se o PDF não for lido, cole o texto da fatura</summary>
+          <textarea id="fat-txt" rows="5" placeholder="Cole aqui o texto copiado do PDF" style="width:100%;margin-top:8px;border:1px solid var(--rule);border-radius:6px;padding:8px;background:var(--sheet-2);font-family:ui-monospace,monospace;font-size:12px"></textarea>
+          <button class="btn small" type="button" id="fat-usar-txt" style="margin-top:6px">Conferir com esse texto</button></details>
+        <div class="full" id="fat-msg"></div>
+      </div><div class="dlg-foot"><button class="btn" value="x" formnovalidate>Fechar</button></div></form>`;
+    $('#fat-pdf').onchange = async (e) => {
+      const arq = e.target.files[0]; if (!arq) return;
+      $('#fat-msg').innerHTML = '<p class="small muted">Lendo o PDF…</p>';
+      try { usar(await Fat.linhasDoPDF(arq)); }
+      catch (err) { console.error(err); $('#fat-msg').innerHTML = `<div class="notice">${esc(err.message || 'Não consegui ler esse PDF.')}</div>`; }
+    };
+    $('#fat-usar-txt').onclick = () => {
+      const t = $('#fat-txt').value.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+      if (t.length < 5) { toast('Cole o texto da fatura'); return; }
+      usar(t);
+    };
+  };
+  const usar = (linhas) => {
+    const r = Fat.parse(linhas);
+    if (r.erro) { $('#fat-msg').innerHTML = `<div class="notice">${esc(r.erro)}</div>`; return; }
+    if (r.banco !== cartao && !(r.banco === 'Nubank' && /nubank/i.test(cartao))) {
+      $('#fat-msg').innerHTML = `<div class="notice">Esse arquivo é uma fatura do ${esc(r.banco)}, e você abriu a conferência do ${esc(cartao)}.</div>`;
+      return;
+    }
+    Fat.ultimo = { cartao, mes, ...r };
+    mostrar();
+  };
+
+  const mostrar = () => {
+    const F = Fat.ultimo;
+    const r = Fat.conferir(F.banco, F.compras, cartao, mes, F.outros);
+    const linha = (dv, i) => {
+      const P = dv.p, A = dv.a;
+      const umSo = A && A.itens.length === 1;
+      const quem = A ? [...new Set(A.itens.map(x => x.c.d))].join(' + ') : (P.dev || P.marca || '');
+      const btnAbrir = `<button class="btn small" data-act="fat-abrir" data-i="${i}">Abrir</button>`;
+      let acoes = btnAbrir, desc = '', rotulo = '', cor = 'parcial';
+      if (dv.tipo === 'valor') {
+        rotulo = 'Valor diferente';
+        desc = `Fatura <b>${brl(Math.abs(P.valor))}</b> · Caderneta <b>${brl(A.valor)}</b> · diferença <b class="owed">${brl(dv.dif)}</b>`;
+        acoes = (umSo ? `<button class="btn small" data-act="fat-valor" data-i="${i}">Usar ${brl(Math.abs(P.valor))}</button>` : '') + btnAbrir;
+      } else if (dv.tipo === 'data') {
+        rotulo = 'Data diferente';
+        desc = `Fatura <b>${dataBR(P.data)}</b> · Caderneta <b>${dataBR(A.dt)}</b> · ${Math.abs(dv.dd)} dia(s) de diferença`;
+        acoes = (umSo ? `<button class="btn small" data-act="fat-data" data-i="${i}">Usar ${dataBR(P.data)}</button>` : '') + btnAbrir;
+      } else if (dv.tipo === 'parcela') {
+        rotulo = 'Parcela diferente';
+        desc = `Fatura <b>${P.k}/${P.n}</b> · Caderneta <b>${A.k}/${A.n}</b>`;
+      } else if (dv.tipo === 'falta') {
+        rotulo = 'Só na fatura'; cor = 'aberto';
+        desc = `${brl(Math.abs(P.valor))} em ${dataBR(P.data)}${P.k ? ` · parcela ${P.k}/${P.n}` : ''}`;
+        acoes = `<button class="btn small primary" data-act="fat-lancar" data-i="${i}">Lançar</button>`;
+      } else {
+        rotulo = 'Só na Caderneta'; cor = 'credito';
+        desc = `${brl(A.valor)} · compra de ${dataBR(A.dt)}${A.n > 1 ? ` · parcela ${A.k}/${A.n}` : ''}`;
+        acoes = btnAbrir + (umSo && A.n === 1 ? `<button class="btn small danger" data-act="fat-excluir" data-i="${i}">Excluir</button>` : '');
+      }
+      const titulo = (P ? (P.texto || P.estab || P.desc) : A.desc) + (A && A.juntos ? ` (${A.juntos} lançamentos)` : '');
+      const ambos = P && A && Fat.norm(P.desc) !== Fat.norm(A.desc)
+        ? `<br><span class="small muted">fatura: ${esc(P.desc)}<br>Caderneta: ${esc(A.desc)}</span>` : '';
+      return `<tr><td><span class="stamp ${cor}">${rotulo}</span></td>
+        <td class="wrap"><b>${esc(titulo || '—')}</b>${quem ? ` <span class="muted small">${esc(quem)}</span>` : ''}${ambos}</td>
+        <td class="wrap small">${desc}${dv.mudaFatura ? ' <span class="chip warn">muda o mês da fatura</span>' : ''}</td><td><div class="row-actions">${acoes}</div></td></tr>`;
+    };
+    const difTotal = Core.r2(r.totalPdf - r.totalApp);
+    d.innerHTML = `<form method="dialog">${cab}
+      <div class="dlg-body">
+        <div class="full ledger-head" style="margin-bottom:0">
+          <div class="big"><div class="lbl">Divergências</div><div class="val" style="${r.div.length ? '' : 'color:var(--paid)'}">${r.div.length}</div><div class="hint">${r.conferem} lançamento(s) conferem</div></div>
+          <div><div class="lbl">Total da fatura</div><div class="val">${brl(r.totalPdf)}</div><div class="hint">${r.nPdf} linhas no PDF</div></div>
+          <div><div class="lbl">Total na Caderneta</div><div class="val">${brl(r.totalApp)}</div><div class="hint">${r.nApp} lançamentos</div></div>
+          <div><div class="lbl">Diferença</div><div class="val ${Math.abs(difTotal) > 0.02 ? 'owed' : 'paid'}">${brl(difTotal)}</div><div class="hint">fatura − Caderneta</div></div>
+        </div>
+        ${r.dicaDia ? `<div class="full notice">${Math.abs(r.dicaDia)} dia(s) de diferença em ${r.div.filter(d => d.tipo === 'data').length} lançamentos, todos para o mesmo lado. Se isso se repetir todo mês, confira o dia de fechamento do ${esc(cartao)} em Ajustes.</div>` : ''}
+        ${r.div.length ? `<div class="full tbl-wrap"><table><thead><tr><th>Situação</th><th>Lançamento</th><th>Detalhe</th><th></th></tr></thead>
+          <tbody>${r.div.map(linha).join('')}</tbody></table></div>` : '<div class="full card small">Tudo conferido: cada linha da fatura tem o lançamento correspondente, com o mesmo valor e a mesma data.</div>'}
+        ${r.estornadas.length ? `<details class="full"><summary class="small muted" style="cursor:pointer">${r.estornadas.length} compra(s) estornada(s) na própria fatura</summary>
+          <div class="tbl-wrap" style="margin-top:8px"><table><tbody>${r.estornadas.map(x => `<tr><td class="wrap">${esc(x.p.desc)}</td><td>${dataBR(x.p.data)}</td><td class="n">${brl(Math.abs(x.p.valor))}</td><td class="small muted wrap">estornada: ${esc(x.o.desc)}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
+        ${r.encargos.length ? `<details class="full"><summary class="small muted" style="cursor:pointer">${r.encargos.length} lançamento(s) que a fatura mostra como encargo, juros ou financiamento</summary>
+          <div class="tbl-wrap" style="margin-top:8px"><table><tbody>${r.encargos.map(x => `<tr><td class="wrap">${esc(x.a.desc)}</td><td class="n">${brl(x.a.valor)}</td><td class="small muted wrap">na fatura: ${esc(x.o.desc)} · ${brl(Math.abs(x.o.valor))}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
+        ${r.leves.length ? `<details class="full"><summary class="small muted" style="cursor:pointer">${r.leves.length} diferença(s) pequena(s): dias que não mudam a fatura e centavos de arredondamento</summary>
+          <div class="tbl-wrap" style="margin-top:8px"><table><tbody>${r.leves.map(l => `<tr><td class="wrap">${esc(l.a.desc)}</td><td class="small">${l.tipo === 'valor-leve' ? `fatura ${brl(Math.abs(l.p.valor))} · Caderneta ${brl(l.a.valor)}` : `fatura ${dataBR(l.p.data)} · Caderneta ${dataBR(l.a.dt)}`}</td><td class="n">${brl(l.a.valor)}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
+        ${F.outros.length ? `<details class="full"><summary class="small muted" style="cursor:pointer">${F.outros.length} linha(s) que não são compras: pagamentos, estornos, juros e encargos</summary>
+          <div class="tbl-wrap" style="margin-top:8px"><table><tbody>${F.outros.map(o => `<tr><td>${dataBR(o.data)}</td><td class="wrap">${esc(o.desc)}</td><td class="n">${brl(o.valor)}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
+      </div>
+      <div class="dlg-foot"><button class="btn" type="button" data-act="fat-outro">Trocar arquivo</button><div class="spacer"></div><button class="btn primary" value="x">Fechar</button></div></form>`;
+    Fat.divs = r.div;
+  };
+
+  Fat.reabrir = () => dlgConferencia(cartao, mes);
+  if (guardado) mostrar(); else pedir();
+  d.showModal();
+  if (guardado) return;
+}
+
+/* ações da conferência */
+async function acaoConferencia(act, i) {
+  const dv = (Fat.divs || [])[+i]; if (!dv) return;
+  const A = dv.a, P = dv.p;
+  const volta = () => { const d = $('#dlg'); d.addEventListener('close', () => setTimeout(() => Fat.reabrir && Fat.reabrir(), 60), { once: true }); };
+  if (act === 'fat-abrir') { volta(); dlgCompra(A ? A.itens[0].c.i : null); return; }
+  if (act === 'fat-lancar') {
+    const dev = P.dev && devsTodos().find(x => x.toLowerCase() === String(P.dev).toLowerCase());
+    const n = P.n || 1, k = P.k || 1;
+    const total = P.total != null ? P.total : Core.r2(Math.abs(P.valor) * n);
+    let dt = P.data;
+    if (Fat.ultimo.banco === 'Nubank' && k > 1) dt = Core.dateIn(Core.addMonths(P.data.slice(0, 7), -(k - 1)), Number(P.data.slice(8, 10)));
+    volta();
+    dlgCompra(null, { d: dev || '', m: Fat.ultimo.cartao, c: (P.texto || P.estab || P.desc).trim(), total, n, dt, ini: k });
+    return;
+  }
+  if (act === 'fat-excluir') {
+    const c = A.itens[0].c;
+    if (!await confirmar(`Excluir “${c.c}” de ${c.d}? Essa compra não apareceu na fatura.`)) return;
+    Recorr.esquecer(c); S.compras = S.compras.filter(x => x !== c);
+    reindex(); Store.mark(); render(); Fat.reabrir(); toast('Compra excluída');
+    return;
+  }
+  if (act === 'fat-valor' || act === 'fat-data') {
+    const c = A.itens[0].c;
+    const ini = Math.min(...c.p.map(x => x[0]));
+    if (act === 'fat-valor') c.v = Core.r2(Math.abs(P.valor) * c.n);
+    else c.dt = P.data;
+    c.p = Core.gerarParcelas(S.cfg, { meio: c.m, data: c.dt, total: c.v, n: c.n, inicio: ini });
+    if (c.rec) c.man = true;
+    reindex(); Store.mark(); render(); Fat.reabrir();
+    toast(act === 'fat-valor' ? 'Valor ajustado' : 'Data ajustada');
+  }
+}
+
+</script>
+<script>
+/* ===== Exportar a dívida do mês como imagem ===== */
+const IMG = {
+  paper: '#E9EEEC', sheet: '#FAFBFA', faixa: '#15262B', ink: '#15262B', ink2: '#51646A', ink3: '#7F9095',
+  rule: '#D7E0DC', owed: '#A94F08', paid: '#1B7550', stamp: '#9E2A4E', credit: '#2A5DB0',
+};
+
+async function fonteCarregada() {
+  try { await document.fonts.ready; return document.fonts.check('800 40px Manrope'); } catch (e) { return false; }
+}
+const ff = (peso, tam, temManrope) => `${peso} ${tam}px ${temManrope ? '"Manrope", ' : ''}system-ui, -apple-system, "Segoe UI", sans-serif`;
+
+function cortar(ctx, txt, largura) {
+  if (ctx.measureText(txt).width <= largura) return txt;
+  let s = txt;
+  while (s.length > 2 && ctx.measureText(s + '…').width > largura) s = s.slice(0, -1);
+  return s + '…';
+}
+function carimbo(ctx, x, y, texto, cor, escala = 1) {
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(-3 * Math.PI / 180);
+  ctx.font = ff(800, 20 * escala, ctx._manrope);
+  const w = ctx.measureText(texto).width + 26 * escala, h = 34 * escala;
+  ctx.strokeStyle = cor; ctx.lineWidth = 3 * escala;
+  ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 6 * escala); ctx.stroke();
+  ctx.fillStyle = cor; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(texto, 0, 1 * escala);
+  ctx.restore();
+}
+
+function dadosDoExtrato(nome, mes) {
+  const parc = (S.idx.get(mes) || []).filter(i => i.c.d === nome)
+    .sort((a, b) => a.c.dt.localeCompare(b.c.dt) || a.c.c.localeCompare(b.c.c, 'pt-BR'))
+    .map(i => ({ dt: i.c.dt, desc: i.c.c, k: i.k, n: i.c.n, v: i.v, meio: i.c.m, venc: i.venc }));
+  const pags = S.pags.filter(p => p.d === nome && p.f === mes).sort((a, b) => a.dt.localeCompare(b.dt));
+  const total = parc.reduce((s, x) => s + x.v, 0);
+  const pago = pags.reduce((s, x) => s + x.v, 0);
+  const venc = parc.length ? parc.map(x => x.venc).sort().pop() : null;
+  return { parc, pags, total, pago, falta: total - pago, venc };
+}
+
+async function gerarImagemExtrato(nome, mes) {
+  const D = dadosDoExtrato(nome, mes);
+  const manrope = await fonteCarregada();
+  const duasCol = D.parc.length > 30;
+  const W = duasCol ? 1400 : 1040;
+  const pad = 56, linhaH = 40;
+  const colL = duasCol ? (W - pad * 2 - 40) / 2 : W - pad * 2;
+  const linhasCol = duasCol ? Math.ceil(D.parc.length / 2) : D.parc.length;
+  const alturaCabec = 300;
+  const alturaCompras = 34 + linhasCol * linhaH + 12 + 34 + 46;
+  const alturaPagos = D.pags.length ? 24 + 48 + D.pags.length * linhaH + 10 + 34 + 40 : 0;
+  const H = alturaCabec + alturaCompras + alturaPagos + 70;
+
+  const escala = Math.min(3, Math.max(2, 2400 / W));
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(W * escala); cv.height = Math.round(H * escala);
+  const ctx = cv.getContext('2d');
+  ctx.scale(escala, escala); ctx._manrope = manrope;
+  ctx.textBaseline = 'alphabetic';
+
+  // fundo
+  ctx.fillStyle = IMG.paper; ctx.fillRect(0, 0, W, H);
+  // faixa do cabeçalho
+  ctx.fillStyle = IMG.faixa; ctx.fillRect(0, 0, W, 210);
+  ctx.fillStyle = 'rgba(233,238,236,.55)';
+  ctx.font = ff(700, 17, manrope); ctx.textAlign = 'left';
+  ctx.fillText('CADERNETA', pad, 56);
+  ctx.textAlign = 'right';
+  ctx.fillText(`${cap(mesNome(mes))} de ${mes.slice(0, 4)}`.toUpperCase(), W - pad, 56);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = IMG.paper; ctx.font = ff(800, 62, manrope);
+  ctx.fillText(cortar(ctx, nome, W - pad * 2 - 260), pad, 132);
+  ctx.fillStyle = 'rgba(233,238,236,.6)'; ctx.font = ff(500, 20, manrope);
+  ctx.fillText(D.venc ? `Vencimento ${dataBR(D.venc)}` : 'Resumo do mês', pad, 170);
+
+  // valor em destaque
+  const st = Math.abs(D.falta) < 0.005 ? ['Quitado', IMG.paid] : D.falta < 0 ? ['Crédito', IMG.credit] : D.pago > 0 ? ['Parcial', IMG.owed] : ['Em aberto', IMG.stamp];
+  ctx.textAlign = 'right';
+  ctx.fillStyle = D.falta > 0.005 ? '#F0A45E' : '#5CC795';
+  ctx.font = ff(800, 54, manrope);
+  ctx.fillText(brl(Math.abs(D.falta)), W - pad, 132);
+  ctx.fillStyle = 'rgba(233,238,236,.6)'; ctx.font = ff(600, 18, manrope);
+  ctx.fillText(D.falta < -0.005 ? 'de crédito' : 'a pagar', W - pad, 166);
+  ctx.textAlign = 'left';
+  carimbo(ctx, W - pad - 120, 250, st[0], st[1], 1.1);
+
+  let y = alturaCabec;
+  // compras
+  ctx.fillStyle = IMG.ink2; ctx.font = ff(700, 18, manrope);
+  ctx.fillText(`COMPRAS DO MÊS · ${D.parc.length}`, pad, y - 16);
+  ctx.strokeStyle = IMG.ink; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(pad, y - 2); ctx.lineTo(W - pad, y - 2); ctx.stroke();
+
+  const linha = (x, yy, larg, it, i) => {
+    if (i % 2 === 1) { ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.fillRect(x - 10, yy - 26, larg + 20, linhaH); }
+    ctx.fillStyle = IMG.ink3; ctx.font = ff(600, 17, manrope); ctx.textAlign = 'left';
+    ctx.fillText(it.dt.slice(8, 10) + '/' + it.dt.slice(5, 7), x, yy);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = IMG.ink; ctx.font = ff(700, 19, manrope);
+    const vTxt = brl(it.v);
+    ctx.fillText(vTxt, x + larg, yy);
+    const wv = ctx.measureText(vTxt).width;
+    ctx.textAlign = 'left';
+    let parcela = '';
+    if (it.n > 1) { parcela = `  ${it.k}/${it.n}`; }
+    ctx.font = ff(500, 19, manrope);
+    const espaco = larg - 58 - wv - 16 - ctx.measureText(parcela).width;
+    const d = cortar(ctx, it.desc || '—', espaco);
+    ctx.fillStyle = IMG.ink; ctx.fillText(d, x + 58, yy);
+    if (parcela) { ctx.fillStyle = IMG.ink3; ctx.font = ff(600, 16, manrope); ctx.fillText(parcela, x + 58 + ctx.measureText(d).width + 6, yy); }
+  };
+  y += 34;
+  D.parc.forEach((it, i) => {
+    const col = duasCol && i >= linhasCol ? 1 : 0;
+    const idx = duasCol ? i % linhasCol : i;
+    linha(pad + col * (colL + 40), y + idx * linhaH, colL, it, i);
+  });
+  y += linhasCol * linhaH + 12;
+  ctx.strokeStyle = IMG.ink; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke();
+  y += 34;
+  ctx.fillStyle = IMG.ink; ctx.font = ff(700, 22, manrope); ctx.textAlign = 'left';
+  ctx.fillText('Total das compras', pad, y);
+  ctx.textAlign = 'right'; ctx.font = ff(800, 24, manrope);
+  ctx.fillText(brl(D.total), W - pad, y);
+  y += 46;
+
+  // pagamentos
+  if (D.pags.length) {
+    y += 24;
+    ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink2; ctx.font = ff(700, 18, manrope);
+    ctx.fillText(`PAGAMENTOS RECEBIDOS · ${D.pags.length}`, pad, y);
+    ctx.strokeStyle = IMG.rule; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(pad, y + 14); ctx.lineTo(W - pad, y + 14); ctx.stroke();
+    y += 48;
+    D.pags.forEach((p, i) => {
+      const yy = y + i * linhaH;
+      ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink3; ctx.font = ff(600, 17, manrope);
+      ctx.fillText(dataBR(p.dt), pad, yy);
+      ctx.fillStyle = IMG.ink; ctx.font = ff(500, 19, manrope);
+      ctx.fillText(p.m || 'Pix', pad + 130, yy);
+      ctx.textAlign = 'right'; ctx.fillStyle = IMG.paid; ctx.font = ff(700, 19, manrope);
+      ctx.fillText('− ' + brl(p.v), W - pad, yy);
+    });
+    y += D.pags.length * linhaH + 10;
+    ctx.strokeStyle = IMG.ink; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke();
+    y += 34;
+    ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.font = ff(700, 22, manrope);
+    ctx.fillText('Falta pagar', pad, y);
+    ctx.textAlign = 'right'; ctx.font = ff(800, 26, manrope);
+    ctx.fillStyle = D.falta > 0.005 ? IMG.owed : IMG.paid;
+    ctx.fillText(brl(Math.abs(D.falta)), W - pad, y);
+    y += 40;
+  }
+
+  ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink3; ctx.font = ff(500, 15, manrope);
+  ctx.fillText(`Gerado em ${dataBR(Core.todayISO())} · Caderneta`, pad, H - 34);
+  return { canvas: cv, dados: D };
+}
+
+async function dlgImagem(nome, mes) {
+  const d = $('#dlg'); d.className = 'wide';
+  d.innerHTML = `<form method="dialog"><div class="dlg-head"><h2>Imagem da dívida · ${esc(nome)}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
+    <div class="dlg-body"><p class="full small muted" style="margin:0" id="img-msg">Gerando…</p><div class="full" id="img-wrap"></div></div>
+    <div class="dlg-foot"><button class="btn" type="button" id="img-copiar">Copiar imagem</button><div class="spacer"></div>
+      <button class="btn" value="x" formnovalidate>Fechar</button><button class="btn primary" type="button" id="img-baixar">Baixar PNG</button></div></form>`;
+  d.showModal();
+  let cv;
+  try { cv = (await gerarImagemExtrato(nome, mes)).canvas; }
+  catch (e) { console.error(e); $('#img-msg').innerHTML = '<div class="notice">Não consegui gerar a imagem.</div>'; return; }
+  $('#img-msg').textContent = `${cv.width} × ${cv.height} pixels`;
+  const img = new Image(); img.src = cv.toDataURL('image/png');
+  img.style.cssText = 'width:100%;height:auto;border:1px solid var(--rule);border-radius:8px';
+  $('#img-wrap').appendChild(img);
+  const arquivo = `caderneta-${Fat.norm(nome).replace(/ /g, '-')}-${mes}.png`;
+  $('#img-baixar').onclick = () => cv.toBlob(b => {
+    const url = URL.createObjectURL(b);
+    const a = document.createElement('a'); a.href = url; a.download = arquivo;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000); toast('Imagem baixada');
+  }, 'image/png');
+  $('#img-copiar').onclick = () => cv.toBlob(async b => {
+    try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]); toast('Imagem copiada'); }
+    catch (e) { toast('Este navegador não deixa copiar imagem; use Baixar PNG'); }
+  }, 'image/png');
+}
 
 </script>
 <script>
