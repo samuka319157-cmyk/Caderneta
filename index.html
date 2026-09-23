@@ -219,6 +219,16 @@ dialog::backdrop{background:rgba(10,20,22,.5)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 
 
+/* observação da fatura */
+.obs-col{white-space:normal;min-width:150px;max-width:280px;font-size:13px;line-height:1.35;color:var(--ink-2)}
+.nota{display:inline;font-weight:500}
+.nota-bt{padding:0 4px;font-size:12px;vertical-align:baseline}
+.nota-bt.vazia{color:var(--ink-3);opacity:.5;font-weight:500}
+tr:hover .nota-bt.vazia,.nota-bt.vazia:focus-visible,.ledger-head .nota-bt.vazia{opacity:1;color:var(--focus)}
+.nota-bt svg{width:14px;height:14px}
+.ledger-head .hint .nota{color:var(--ink-2);font-weight:500}
+.ledger-head .hint{white-space:normal;line-height:1.35}
+
 </style>
 </head>
 <body>
@@ -250,12 +260,14 @@ const Core = (() => {
     const meio = meioDe(cfg, meioNome);
     const mesCompra = dataISO.slice(0, 7);
     if (!meio || meio.t !== 'cartao') {
-      // dinheiro/pix: primeira cobrança informada (ou próximo dia padrão) e depois mês a mês
+      // dinheiro/pix: primeira cobrança informada, senão a mesma regra do cartão —
+      // compra antes do dia de fechamento cobra no mesmo mês, a partir dele vai para o seguinte
       let first = primeiraCobranca;
       if (!first) {
         const dia = (meio && meio.v) || 15;
+        const fech = (meio && meio.f) || dia;
         const d = Number(dataISO.slice(8, 10));
-        first = dateIn(d < dia ? mesCompra : addMonths(mesCompra, 1), dia);
+        first = dateIn(d < fech ? mesCompra : addMonths(mesCompra, 1), dia);
       }
       return dateIn(addMonths(first.slice(0, 7), k - 1), Number(first.slice(8, 10)));
     }
@@ -291,7 +303,7 @@ const Core = (() => {
 
   function dataCobranca(cfg, cob, mes) {
     const meio = meioDe(cfg, cob.m);
-    const fech = meio && meio.t === 'cartao' ? meio.f : 1;
+    const fech = (meio && meio.f) || 1;
     const alvo = cob.d < fech ? mes : addMonths(mes, -1);
     return dateIn(alvo, cob.d);
   }
@@ -299,7 +311,6 @@ const Core = (() => {
   function resumo(cfg, idx, pags, mes, hoje = todayISO()) {
     const inst = idx.get(mes) || [];
     const eu = cfg.eu;
-    const taxa = (cfg.taxa || 0) / 100;
     const fat = (cfg.fat && cfg.fat[mes]) || {};
     const devs = new Map();
     const get = n => { let o = devs.get(n); if (!o) devs.set(n, o = { n, devido: 0, pago: 0, dias: {}, qtd: 0 }); return o; };
@@ -316,7 +327,7 @@ const Core = (() => {
     for (const p of pagsMes) { get(p.d).pago += p.v; recebido += p.v; }
     const linhas = [...devs.values()].map(o => {
       const saldo = o.devido - o.pago;
-      return { ...o, saldo, comTaxa: o.devido * (1 + taxa) - o.pago, status: Math.abs(saldo) <= 0.01 ? 'quitado' : saldo < 0 ? 'credito' : (o.pago > 0 ? 'parcial' : 'aberto') };
+      return { ...o, saldo, status: Math.abs(saldo) <= 0.01 ? 'quitado' : saldo < 0 ? 'credito' : (o.pago > 0 ? 'parcial' : 'aberto') };
     }).sort((a, b) => a.n.localeCompare(b.n, 'pt-BR'));
     const euLinha = linhas.find(l => l.n === eu) || { devido: 0, pago: 0, saldo: 0 };
     const terceiros = linhas.filter(l => l.n !== eu);
@@ -501,11 +512,11 @@ const ico = (n, t = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="current
 const VIEWS = [['resumo', 'Resumo'], ['devedores', 'Devedores'], ['lancamentos', 'Lançamentos'], ['pagamentos', 'Pagamentos'], ['planejamento', 'Planejamento'], ['ajustes', 'Ajustes']];
 
 const DEFAULT_CFG = () => ({
-  eu: 'Eu', taxa: 5, devs: [{ n: 'Eu', a: true }], cobr: [], fat: {},
+  eu: 'Eu', devs: [{ n: 'Eu', a: true }], cobr: [], fat: {},
   meios: [
     { n: 'Nubank', t: 'cartao', f: 8, v: 15, x: 0, cor: '#820AD1' },
     { n: 'Inter', t: 'cartao', f: 8, v: 15, x: 0, cor: '#F07A00' },
-    { n: 'Dinheiro', t: 'dinheiro', v: 15, cor: '#3F8F4E' }],
+    { n: 'Dinheiro', t: 'dinheiro', f: 13, v: 15, cor: '#3F8F4E' }],
   plan: { itens: [], dietaLimite: 0, outros: [], invest: [], ajuda: { tDias: 0, tDia: 0, aDias: 0, aDia: 0 }, extra: 0, emp: { fat: 0, gastos: 0 },
     res: { aporte: 0, meses: 6, contas: [] }, ap: { dia: 20, meses: {}, ate: Core.addMonths(Core.todayISO().slice(0, 7), 12), metodo: 'maior', cxES: 'Saldo em conta', cxD: 'Compra 1 parcela' }, saldoInf: 0 },
 });
@@ -569,6 +580,39 @@ async function salvarArquivo(nome, dados) {
   } catch (e) { console.warn(e); }
   mostrarTexto('Copie o conteúdo', 'Não foi possível baixar o arquivo aqui. Copie o conteúdo abaixo e salve como ' + nome + '.', dados);
 }
+/* ===== Observação da fatura (por devedor e mês) ===== */
+const obsDe = (n, m) => (S.cfg.obs && S.cfg.obs[m] && S.cfg.obs[m][n]) || '';
+function setObs(n, m, txt) {
+  const O = S.cfg.obs ??= {};
+  txt = String(txt || '').trim().slice(0, 600);
+  if (txt) (O[m] ??= {})[n] = txt;
+  else if (O[m]) { delete O[m][n]; if (!Object.keys(O[m]).length) delete O[m]; }
+  Store.mark('cfg');
+}
+/* nota ao lado do valor: texto + lápis, ou só o lápis quando está vazia */
+function notaCel(n, m) {
+  const o = obsDe(n, m);
+  const bt = `<button class="btn link small nota-bt${o ? '' : ' vazia'}" data-act="obs" data-n="${esc(n)}" data-m="${m}" title="${o ? 'Editar observação' : 'Escrever uma observação'}" aria-label="Observação de ${esc(n)}">${o ? ico('edit') : '+ nota'}</button>`;
+  return o ? `<span class="nota">${esc(o)}</span> ${bt}` : bt;
+}
+function dlgObs(n, m) {
+  const d = $('#dlg'); d.className = '';
+  d.innerHTML = `<form method="dialog" id="f-obs">
+    <div class="dlg-head"><h2>Observação · ${esc(n)}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
+    <div class="dlg-body"><p class="full small muted" style="margin:0">Aparece ao lado do valor que falta na fatura de <b>${mesNome(m)}/${m.slice(0, 4)}</b>, na tela do devedor e na imagem exportada. Use para anotar o que combinou — por exemplo, uma parcela que passou para o mês seguinte.</p>
+      <label class="field full">Anotação<textarea name="t" rows="4" maxlength="600" placeholder="Ex.: a parcela de R$ 133,33 do cartão do dia 5 vai na fatura de outubro">${esc(obsDe(n, m))}</textarea></label></div>
+    <div class="dlg-foot">${obsDe(n, m) ? `<button class="btn link danger" type="button" id="obs-limpar">Apagar</button>` : ''}<div class="spacer"></div>
+      <button class="btn" value="x" formnovalidate>Cancelar</button><button class="btn primary" value="ok">Salvar</button></div></form>`;
+  d.showModal();
+  const lim = $('#obs-limpar'); if (lim) lim.onclick = () => { setObs(n, m, ''); d.close(); render(); toast('Observação apagada'); };
+  $('#f-obs').addEventListener('submit', e => {
+    if (e.submitter && e.submitter.value !== 'ok') return;
+    setObs(n, m, new FormData($('#f-obs')).get('t'));
+    render(); toast('Observação salva');
+  });
+  setTimeout(() => $('[name=t]', $('#f-obs')).focus(), 30);
+}
+
 function mostrarTexto(titulo, sub, texto) {
   const d = $('#dlg'); d.className = '';
   d.innerHTML = `<form method="dialog"><div class="dlg-head"><h2>${esc(titulo)}</h2><button class="icon-btn" value="x" aria-label="Fechar">✕</button></div>
@@ -622,14 +666,13 @@ function render() {
 /* ===== Resumo ===== */
 function vResumo() {
   const R = Core.resumo(S.cfg, S.idx, S.pags, S.mes);
-  const taxa = S.cfg.taxa || 0;
   let linhas = R.terceiros;
   if (S.soAberto) linhas = linhas.filter(l => l.status !== 'quitado');
   const dias = [...new Set(R.linhas.flatMap(l => Object.keys(l.dias).map(Number)))].sort((a, b) => a - b);
   const tot = k => linhas.reduce((s, l) => s + l[k], 0);
   const devRows = linhas.map(l => `<tr class="click" data-dev="${esc(l.n)}"><td><b>${esc(l.n)}</b></td>
-    <td class="n">${brl(l.devido)}</td><td class="n paid">${l.pago ? brl(l.pago) : '—'}</td><td class="n ${cls(l.saldo)}"><b>${brl(l.saldo)}</b></td>
-    <td class="n">${brl(l.comTaxa)}</td>${dias.map(d => `<td class="n muted">${l.dias[d] ? brl(l.dias[d]) : '—'}</td>`).join('')}<td>${stamp(l.status)}</td></tr>`).join('');
+    <td class="n">${brl(l.devido)}</td><td class="n paid">${l.pago ? brl(l.pago) : '—'}</td><td class="n ${cls(l.saldo)}"><b>${brl(l.saldo)}</b></td><td class="obs-col">${notaCel(l.n, S.mes)}</td>
+    ${dias.map(d => `<td class="n muted">${l.dias[d] ? brl(l.dias[d]) : '—'}</td>`).join('')}<td>${stamp(l.status)}</td></tr>`).join('');
   const eu = R.linhas.find(l => l.n === S.cfg.eu);
 
   const fatRows = R.faturas.filter(f => f.calc || f.informado != null || S.cfg.fat?.[S.mes]?.[f.meio.n]).map(f => {
@@ -673,9 +716,9 @@ function vResumo() {
     <div class="sec-head"><h2>Quem deve em ${mesNome(S.mes)}</h2><p>Soma todas as parcelas do mês, qualquer dia de vencimento. Toque em um nome para ver o detalhe.</p><div class="spacer"></div>
       <label class="small"><input type="checkbox" data-act="so-aberto" ${S.soAberto ? 'checked' : ''}> Só em aberto</label></div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Devedor</th><th class="n">Valor do mês</th><th class="n">Pago</th><th class="n">Falta</th><th class="n">Com ${numBR(taxa)}%</th>${dias.map(d => `<th class="n">Dia ${d}</th>`).join('')}<th>Situação</th></tr></thead>
+      <thead><tr><th>Devedor</th><th class="n">Valor do mês</th><th class="n">Pago</th><th class="n">Falta</th><th class="obs-col">Observação</th>${dias.map(d => `<th class="n">Dia ${d}</th>`).join('')}<th>Situação</th></tr></thead>
       <tbody>${devRows || `<tr><td colspan="${6 + dias.length}" class="empty">Nenhuma parcela de terceiros neste mês.</td></tr>`}</tbody>
-      <tfoot><tr><td>Total</td><td class="n">${brl(tot('devido'))}</td><td class="n">${brl(tot('pago'))}</td><td class="n">${brl(tot('saldo'))}</td><td class="n">${brl(tot('comTaxa'))}</td>${dias.map(d => `<td class="n">${brl(linhas.reduce((s, l) => s + (l.dias[d] || 0), 0))}</td>`).join('')}<td></td></tr>
+      <tfoot><tr><td>Total</td><td class="n">${brl(tot('devido'))}</td><td class="n">${brl(tot('pago'))}</td><td class="n">${brl(tot('saldo'))}</td><td></td>${dias.map(d => `<td class="n">${brl(linhas.reduce((s, l) => s + (l.dias[d] || 0), 0))}</td>`).join('')}<td></td></tr>
       ${eu ? `<tr class="click" data-dev="${esc(eu.n)}"><td style="font-weight:600">${esc(eu.n)} (você)</td><td class="n" style="font-weight:600">${brl(eu.devido)}</td><td></td><td></td><td></td>${dias.map(d => `<td class="n" style="font-weight:500">${eu.dias[d] ? brl(eu.dias[d]) : '—'}</td>`).join('')}<td></td></tr>` : ''}</tfoot>
     </table></div>
   </section>
@@ -748,7 +791,6 @@ function vDevedores() {
   const uma = soma(parc.filter(i => i.c.n === 1)), mais = soma(parc.filter(i => i.c.n > 1));
   const uber = soma(parc.filter(i => /uber/i.test(i.c.c)));
   const st = Math.abs(falta) <= 0.01 ? 'quitado' : falta < 0 ? 'credito' : pago > 0 ? 'parcial' : 'aberto';
-  const taxa = S.cfg.taxa || 0;
   const strip = Array.from({ length: 6 }, (_, i) => { const m = Core.addMonths(S.mes, i); return { m, ...Core.saldoDevedor(S.idx, S.pags, n, m) }; });
   const mx = Math.max(1, ...strip.map(s => s.devido));
   const periodo = modo === 'mes' ? `em ${mesNome(S.mes)}` : modo === 'aberto' ? `de ${mesCurto(S.mes)} em diante` : 'no histórico';
@@ -766,7 +808,7 @@ function vDevedores() {
       <div class="dev-title"><h2>${esc(n)}</h2>${n !== S.cfg.eu ? stamp(st, true) : ''}<div style="flex:1"></div>
         <div class="seg" role="group" aria-label="Período">${[['mes', 'Este mês'], ['aberto', 'Daqui pra frente'], ['tudo', 'Tudo']].map(([k, t]) => `<button data-act="devmodo" data-v="${k}" aria-pressed="${modo === k}">${t}</button>`).join('')}</div></div>
       <div class="ledger-head">
-        <div class="big"><div class="lbl">Falta ${periodo}</div><div class="val ${cls(falta)}" style="${falta <= 0.005 ? 'color:var(--paid)' : ''}">${brl(falta)}</div><div class="hint">com ${numBR(taxa)}%: ${brl(devido * (1 + taxa / 100) - pago)}</div></div>
+        <div class="big"><div class="lbl">Falta ${periodo}</div><div class="val ${cls(falta)}" style="${falta <= 0.005 ? 'color:var(--paid)' : ''}">${brl(falta)}</div><div class="hint">${modo === 'mes' ? notaCel(n, S.mes) : st === 'quitado' ? 'fatura quitada' : st === 'credito' ? 'crédito a favor' : pago > 0 ? 'pagamento parcial' : 'nada recebido ainda'}</div></div>
         <div><div class="lbl">Parcelas</div><div class="val">${brl(devido)}</div><div class="hint">${parc.length} lançamentos</div></div>
         <div><div class="lbl">Pago</div><div class="val paid">${brl(pago)}</div><div class="hint">${pg.length} pagamentos</div></div>
         <div><div class="lbl">À vista / parcelado</div><div class="val" style="font-size:15px;line-height:1.35">${brl(uma)}<br><span class="muted">${brl(mais)}</span></div><div class="hint">${uber ? 'Uber: ' + brl(uber) : 'sem Uber'}</div></div>
@@ -1004,9 +1046,7 @@ function vAjustes() {
     </tbody></table></div>
     <div class="filters" style="margin-top:8px"><input id="novo-dev" placeholder="Nome do novo devedor"><button class="btn" data-act="add-dev">${ico('plus', 'Adicionar')}</button></div>
   </section>
-  <section class="sec"><div class="sec-head"><h2>Geral</h2></div><div class="card"><dl class="kv">
-    <dt>Taxa sobre o valor do mês (%)<small>coluna “com taxa” do resumo</small></dt><dd style="width:90px">${inp('taxa')}</dd></dl>
-    <h3 style="margin:16px 0 6px">Backup</h3>
+  <section class="sec"><div class="sec-head"><h2>Backup</h2></div><div class="card">
     <p class="small muted" style="margin:0 0 8px">${Store.mode === 'drive' ? 'Os dados ficam num arquivo <b>caderneta.json</b> no seu Google Drive.' : 'Os dados estão salvos só neste aparelho. Conecte o Google Drive para usar em qualquer lugar.'} Exporte um backup de vez em quando.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${Store.mode === 'drive'
       ? `<button class="btn" data-act="sincronizar">Salvar agora no Drive</button><button class="btn danger" data-act="desconectar">Desconectar</button>`
@@ -1016,11 +1056,11 @@ function vAjustes() {
     ${c.atualizado ? `<p class="small muted">Última gravação: ${new Date(c.atualizado).toLocaleString('pt-BR')}</p>` : ''}</div></section>
   </div>
 
-  <section class="sec"><div class="sec-head"><h2>Meios de pagamento</h2><p>Compras feitas antes do dia de fechamento entram na fatura que vence no mesmo mês. “Meses extras” empurra o vencimento (Nubank L vence no mês seguinte ao fechamento).</p></div>
+  <section class="sec"><div class="sec-head"><h2>Meios de pagamento</h2><p>Compras feitas antes do dia de fechamento entram na fatura que vence no mesmo mês; a partir dele, na do mês seguinte. Vale também para dinheiro e Pix. “Meses extras” empurra o vencimento (Nubank L vence no mês seguinte ao fechamento).</p></div>
     <div class="tbl-wrap"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Fechamento</th><th>Vencimento</th><th>Meses extras</th><th>Cor</th><th></th></tr></thead><tbody>
     ${c.meios.map((m, i) => `<tr><td><input data-rename-meio="${esc(m.n)}" value="${esc(m.n)}"></td>
       <td><select data-bind="meios.${i}.t" data-type="text"><option value="cartao" ${m.t === 'cartao' ? 'selected' : ''}>Cartão</option><option value="dinheiro" ${m.t !== 'cartao' ? 'selected' : ''}>Dinheiro / Pix</option></select></td>
-      <td>${m.t === 'cartao' ? inp(`meios.${i}.f`, 'int') : '<span class="muted small">—</span>'}</td><td>${inp(`meios.${i}.v`, 'int')}${m.t !== 'cartao' ? '<span class="muted small">dia padrão</span>' : ''}</td>
+      <td>${inp(`meios.${i}.f`, 'int')}${m.t !== 'cartao' ? '<span class="muted small">vira o mês</span>' : ''}</td><td>${inp(`meios.${i}.v`, 'int')}${m.t !== 'cartao' ? '<span class="muted small">dia de cobrar</span>' : ''}</td>
       <td>${m.t === 'cartao' ? inp(`meios.${i}.x`, 'int') : ''}</td><td><input type="color" data-bind="meios.${i}.cor" data-type="text" value="${esc(m.cor || '#888888')}" style="width:44px;min-width:44px;padding:0"></td>
       <td>${S.compras.some(x => x.m === m.n) ? '' : `<button class="btn link danger" data-act="list-del" data-k="meios" data-i="${i}" aria-label="Excluir">${ico('trash')}</button>`}</td></tr>`).join('')}
     </tbody></table></div>
@@ -1394,6 +1434,7 @@ document.addEventListener('click', async e => {
     case 'devmodo': S.devModo = t.dataset.v; render(); break;
     case 'cobrar': mostrarTexto('Cobrança de ' + S.devSel, 'Revise e envie pelo WhatsApp.', textoCobranca()); break;
     case 'imagem': dlgImagem(S.devSel, S.mes); break;
+    case 'obs': dlgObs(t.dataset.n || S.devSel, t.dataset.m || S.mes); break;
     case 'lf-st': S.lf.st = t.dataset.v; S.lf.lim = 80; render(); break;
     case 'lf-mais': S.lf.lim += 120; render(); break;
     case 'pf-per': S.pf.per = t.dataset.v; render(); break;
@@ -2005,6 +2046,20 @@ function carimbo(ctx, x, y, texto, cor, escala = 1) {
   ctx.restore();
 }
 
+function quebrar(ctx, txt, larg) {
+  const out = [];
+  for (const par of String(txt).split(/\n+/)) {
+    let linha = '';
+    for (const p of par.split(/\s+/)) {
+      if (!p) continue;
+      const t = linha ? linha + ' ' + p : p;
+      if (ctx.measureText(t).width > larg && linha) { out.push(linha); linha = p; } else linha = t;
+    }
+    if (linha) out.push(linha);
+  }
+  return out.slice(0, 6);
+}
+
 function dadosDoExtrato(nome, mes) {
   const parc = (S.idx.get(mes) || []).filter(i => i.c.d === nome)
     .sort((a, b) => a.c.dt.localeCompare(b.c.dt) || a.c.c.localeCompare(b.c.c, 'pt-BR'))
@@ -2013,7 +2068,7 @@ function dadosDoExtrato(nome, mes) {
   const total = parc.reduce((s, x) => s + x.v, 0);
   const pago = pags.reduce((s, x) => s + x.v, 0);
   const venc = parc.length ? parc.map(x => x.venc).sort().pop() : null;
-  return { parc, pags, total, pago, falta: total - pago, venc };
+  return { parc, pags, total, pago, falta: total - pago, venc, obs: obsDe(nome, mes) };
 }
 
 async function gerarImagemExtrato(nome, mes) {
@@ -2027,7 +2082,11 @@ async function gerarImagemExtrato(nome, mes) {
   const alturaCabec = 300;
   const alturaCompras = 34 + linhasCol * linhaH + 12 + 34 + 46;
   const alturaPagos = D.pags.length ? 24 + 48 + D.pags.length * linhaH + 10 + 34 + 40 : 0;
-  const H = alturaCabec + alturaCompras + alturaPagos + 70;
+  const med = document.createElement('canvas').getContext('2d');
+  med.font = ff(500, 19, manrope);
+  const obsL = D.obs ? quebrar(med, D.obs, W - pad * 2 - 54) : [];
+  const alturaObs = obsL.length ? 18 + 30 + obsL.length * 27 + 22 : 0;
+  const H = alturaCabec + alturaCompras + alturaPagos + alturaObs + 70;
 
   const escala = Math.min(3, Math.max(2, 2400 / W));
   const cv = document.createElement('canvas');
@@ -2130,6 +2189,20 @@ async function gerarImagemExtrato(nome, mes) {
     ctx.fillStyle = D.falta > 0.005 ? IMG.owed : IMG.paid;
     ctx.fillText(brl(Math.abs(D.falta)), W - pad, y);
     y += 40;
+  }
+
+  // observação
+  if (obsL.length) {
+    y += 18;
+    const alt = 30 + obsL.length * 27 + 4;
+    ctx.fillStyle = IMG.sheet;
+    ctx.beginPath(); ctx.roundRect(pad, y - 16, W - pad * 2, alt, 8); ctx.fill();
+    ctx.fillStyle = IMG.owed; ctx.fillRect(pad, y - 16, 5, alt);
+    ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink3; ctx.font = ff(700, 14, manrope);
+    ctx.fillText('OBSERVAÇÃO', pad + 26, y + 6);
+    ctx.fillStyle = IMG.ink; ctx.font = ff(500, 19, manrope);
+    obsL.forEach((ln, i) => ctx.fillText(ln, pad + 26, y + 34 + i * 27));
+    y += alt + 6;
   }
 
   ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink3; ctx.font = ff(500, 15, manrope);
@@ -2410,10 +2483,11 @@ const Limpeza = {
       if (ps.length) { compras.push({ ...c, p: ps }); velhas.add(c.i); }
     }
     const pags = S.pags.filter(p => p.f <= corte);
-    const fat = {};
+    const fat = {}, obs = {};
     for (const [m, v] of Object.entries(S.cfg.fat || {})) if (m <= corte) fat[m] = v;
+    for (const [m, v] of Object.entries(S.cfg.obs || {})) if (m <= corte) obs[m] = v;
     const nParc = compras.reduce((s, c) => s + c.p.length, 0);
-    return { corte, compras, velhas, pags, fat, nParc, nPag: pags.length, nFat: Object.keys(fat).length };
+    return { corte, compras, velhas, pags, fat, obs, nParc, nPag: pags.length, nFat: Object.keys(fat).length };
   },
 
   aplicar(pl) {
@@ -2422,6 +2496,7 @@ const Limpeza = {
     const ids = new Set(pl.pags.map(p => p.i));
     S.pags = S.pags.filter(p => !ids.has(p.i));
     for (const m of Object.keys(pl.fat)) delete S.cfg.fat[m];
+    for (const m of Object.keys(pl.obs || {})) delete S.cfg.obs[m];
     const R = Recorr.cfg();
     R.skip = R.skip.filter(k => k.split('|')[2] > pl.corte);
   },
@@ -2441,7 +2516,7 @@ const Limpeza = {
         const nome = `caderneta-arquivo-ate-${pl.corte}.json`;
         await Cloud.criarArquivo(nome, {
           app: 'caderneta-arquivo', versao: 1, corte: pl.corte, gerado: new Date().toISOString(),
-          compras: pl.compras, pags: pl.pags, fat: pl.fat,
+          compras: pl.compras, pags: pl.pags, fat: pl.fat, obs: pl.obs,
         });
         arq = nome;
         this.aplicar(pl);
@@ -2474,6 +2549,8 @@ function restaurarArquivo(j) {
   const ids = new Set(S.pags.map(p => p.i));
   for (const p of j.pags || []) if (!ids.has(p.i)) { S.pags.push(p); np++; }
   for (const [m, v] of Object.entries(j.fat || {})) if (!S.cfg.fat[m]) S.cfg.fat[m] = v;
+  const O = S.cfg.obs ??= {};
+  for (const [m, v] of Object.entries(j.obs || {})) if (!O[m]) O[m] = v;
   return { nc, np };
 }
 
@@ -2838,7 +2915,9 @@ function aplicar(j) {
 }
 function iniciar() {
   reindex(); S.ready = true;
-  S.cfg.cobr ??= []; S.cfg.fat ??= {}; S.cfg.plan ??= DEFAULT_CFG().plan;
+  S.cfg.cobr ??= []; S.cfg.fat ??= {}; S.cfg.obs ??= {}; S.cfg.plan ??= DEFAULT_CFG().plan;
+  if (S.cfg.taxa != null) { delete S.cfg.taxa; Store.dirty.add('tudo'); }
+  for (const m of S.cfg.meios || []) if (m.t !== 'cartao' && !m.f) { m.f = 13; Store.dirty.add('tudo'); }
   const vistos = new Set();
   for (const it of S.cfg.plan.itens) { if (!it.id || vistos.has(it.id)) { it.id = uid('i'); Store.dirty.add('tudo'); } vistos.add(it.id); }
   shell(); render();
