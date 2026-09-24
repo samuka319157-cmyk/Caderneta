@@ -229,6 +229,22 @@ tr:hover .nota-bt.vazia,.nota-bt.vazia:focus-visible,.ledger-head .nota-bt.vazia
 .ledger-head .hint .nota{color:var(--ink-2);font-weight:500}
 .ledger-head .hint{white-space:normal;line-height:1.35}
 
+/* botão Atualizar + barra de sincronização */
+.sync-btn{border-color:var(--rule);font-weight:700}
+.sync-btn svg{width:17px;height:17px}
+.sync-btn.girando svg{animation:girar 1s linear infinite}
+.sync-btn[disabled]{opacity:.75;cursor:default}
+@keyframes girar{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.sync-btn.girando svg{animation:none}}
+.sync-bar{position:relative;height:26px;background:var(--sheet-2);border-bottom:1px solid var(--rule-2);overflow:hidden}
+.sync-bar i{position:absolute;inset:0 auto 0 0;width:0;background:var(--focus);opacity:.16;transition:width .35s ease}
+.sync-bar.ok i{background:var(--paid);opacity:.2}
+.sync-bar.err i{background:var(--owed);opacity:.2}
+.sync-bar span{position:relative;display:block;padding:4px 18px;font-size:12.5px;font-weight:600;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sync-bar.err span{color:var(--owed)}
+.sync-bar.ok span{color:var(--paid)}
+@media (max-width:900px){.sync-btn .act-label{display:none}}
+
 </style>
 </head>
 <body>
@@ -507,6 +523,7 @@ const ICON = {
   left: '<path d="M15 18l-6-6 6-6"/>', right: '<path d="M9 18l6-6-6-6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
   cal: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/>',
+  sync: '<path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.6-4.2"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.6 4.2"/><path d="M20 3v4.5h-4.5"/><path d="M4 21v-4.5h4.5"/>',
 };
 const ico = (n, t = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>${t}`;
 const VIEWS = [['resumo', 'Resumo'], ['devedores', 'Devedores'], ['lancamentos', 'Lançamentos'], ['pagamentos', 'Pagamentos'], ['planejamento', 'Planejamento'], ['ajustes', 'Ajustes']];
@@ -642,10 +659,12 @@ function shell() {
         <button class="icon-btn" data-act="mes-hoje" aria-label="Voltar ao mês atual" title="Mês atual">${ico('cal')}</button>
       </div>
       <div class="spacer"></div>
+      <button class="btn sync-btn" id="btn-sync" data-act="sync" title="Baixar o que mudou em outro aparelho e enviar o daqui">${ico('sync')}<span class="act-label">Atualizar</span></button>
       <button class="btn" data-act="novo-pag">${ico('plus')}<span class="act-label">Pagamento</span></button>
       <button class="btn primary" data-act="nova-compra">${ico('plus')}<span class="act-label">Compra</span></button>
       <button class="icon-btn mob-only" data-view="ajustes" aria-label="Ajustes" style="${matchMedia('(max-width:900px)').matches ? '' : 'display:none'}">${ico('ajustes')}</button>
     </header>
+    <div id="sync-bar" class="sync-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" hidden><i></i><span></span></div>
     <div id="view"></div>
   </main>
   <nav class="tabs">${navMob}</nav>`;
@@ -1415,14 +1434,14 @@ document.addEventListener('click', async e => {
     case 'del-pag': {
       const p = S.pags.find(x => x.i === t.dataset.id);
       $('#dlg').open && $('#dlg').close();
-      if (p && await confirmar(`Excluir o pagamento de ${brl(p.v)} de ${p.d} (${dataBR(p.dt)})?`)) { S.pags = S.pags.filter(x => x !== p); Store.mark('pag'); render(); toast('Pagamento excluído'); }
+      if (p && await confirmar(`Excluir o pagamento de ${brl(p.v)} de ${p.d} (${dataBR(p.dt)})?`)) { S.pags = S.pags.filter(x => x !== p); Store.apagou(p.i); Store.mark('pag'); render(); toast('Pagamento excluído'); }
       break;
     }
     case 'del-compra': {
       const c = S.compras.find(x => x.i === t.dataset.id);
       $('#dlg').close();
       const msg = c && c.rec ? `Excluir “${c.c}” de ${c.d} em ${mesNome(Recorr.mesDe(c))}? Essa cobrança mensal não será recriada nesse mês.` : c && `Excluir “${c.c}” de ${c.d} e todas as ${c.p.length} parcelas?`;
-      if (c && await confirmar(msg)) { Recorr.esquecer(c); S.compras = S.compras.filter(x => x !== c); Store.mark('c-' + c.dt.slice(0, 7)); reindex(); render(); toast('Compra excluída'); }
+      if (c && await confirmar(msg)) { Recorr.esquecer(c); S.compras = S.compras.filter(x => x !== c); Store.apagou(c.i); Store.mark('c-' + c.dt.slice(0, 7)); reindex(); render(); toast('Compra excluída'); }
       break;
     }
     case 'dup-compra': {
@@ -1430,6 +1449,7 @@ document.addEventListener('click', async e => {
       dlgCompra(null, { d: c.d, m: c.m, c: c.c, total: c.v, n: c.n, dt: Core.todayISO() });
       break;
     }
+    case 'sync': ultimoAuto = Date.now(); await sincronizar(true); break;
     case 'so-aberto': S.soAberto = t.checked; render(); break;
     case 'devmodo': S.devModo = t.dataset.v; render(); break;
     case 'cobrar': mostrarTexto('Cobrança de ' + S.devSel, 'Revise e envie pelo WhatsApp.', textoCobranca()); break;
@@ -1462,7 +1482,7 @@ document.addEventListener('click', async e => {
     case 'dup-del': {
       const c = S.compras.find(x => x.i === t.dataset.id); if (!c) break;
       if (!await confirmar(`Excluir “${c.c}” de ${c.d}, fatura de ${mesNome(Recorr.mesDe(c))}? A rotina não vai recriar esse mês.`)) break;
-      Recorr.esquecer(c); S.compras = S.compras.filter(x => x !== c);
+      Recorr.esquecer(c); S.compras = S.compras.filter(x => x !== c); Store.apagou(c.i);
       reindex(); Store.mark(); render(); dlgDuplicados(); toast('Lançamento excluído');
       break;
     }
@@ -1999,7 +2019,7 @@ async function acaoConferencia(act, i) {
   if (act === 'fat-excluir') {
     const c = A.itens[0].c;
     if (!await confirmar(`Excluir “${c.c}” de ${c.d}? Essa compra não apareceu na fatura.`)) return;
-    Recorr.esquecer(c); S.compras = S.compras.filter(x => x !== c);
+    Recorr.esquecer(c); S.compras = S.compras.filter(x => x !== c); Store.apagou(c.i);
     reindex(); Store.mark(); render(); Fat.reabrir(); toast('Compra excluída');
     return;
   }
@@ -2708,12 +2728,15 @@ const Cloud = {
     return j.files[0];
   },
 
-  async baixar() {
-    const m = await this.achar();
-    if (!m) return null;
+  async conteudo() {
     const r = await this.req(`${API}/files/${this.id}?alt=media`);
     if (!r.ok) throw new Error('Google Drive respondeu ' + r.status);
     return r.json();
+  },
+  async baixar() {
+    const m = await this.achar();
+    if (!m) return null;
+    return this.conteudo();
   },
 
   async enviar(dados, forcar) {
@@ -2755,13 +2778,113 @@ const Cloud = {
 };
 
 /* ===== Armazenamento ===== */
+/* Regra de ouro: os dois aparelhos podem editar ao mesmo tempo. Nada é
+   sobrescrito — o que existe dos dois lados é juntado por id, e o que foi
+   apagado de propósito fica registrado em cfg.del para não voltar. */
+
+const AGORA = () => new Date().toISOString();
+const DIAS_TUMULO = 180;
+
+function podarTumulos(lista) {
+  const limite = new Date(Date.now() - DIAS_TUMULO * 864e5).toISOString();
+  const m = new Map();
+  for (const d of lista || []) if (d && d.i && d.t > limite && !m.has(d.i)) m.set(d.i, d);
+  return [...m.values()];
+}
+
+function mesclarCfg(novo, velho) {
+  const c = { ...velho, ...novo };
+  const porMes = (k) => {
+    const o = { ...(velho[k] || {}) };
+    for (const [m, v] of Object.entries(novo[k] || {})) o[m] = { ...(o[m] || {}), ...v };
+    return o;
+  };
+  c.fat = porMes('fat'); c.obs = porMes('obs');
+  c.del = podarTumulos([...(novo.del || []), ...(velho.del || [])]);
+  const rn = novo.recorr || {}, rv = velho.recorr || {};
+  c.recorr = { ...rv, ...rn, skip: [...new Set([...(rv.skip || []), ...(rn.skip || [])])] };
+  const ln = novo.limpeza, lv = velho.limpeza;
+  if (ln || lv) {
+    const base = { ...(lv || {}), ...(ln || {}) };
+    base.ultima = [(ln && ln.ultima) || '', (lv && lv.ultima) || ''].sort().pop() || null;
+    const vistos = new Set();
+    base.hist = [...((ln && ln.hist) || []), ...((lv && lv.hist) || [])]
+      .filter(h => { const k = h.em + '|' + h.corte; if (vistos.has(k)) return false; vistos.add(k); return true; })
+      .sort((a, b) => b.em.localeCompare(a.em)).slice(0, 12);
+    c.limpeza = base;
+  }
+  return c;
+}
+
+/* junta dois pacotes; em empate de um mesmo registro, vale o lado mais novo */
+function mesclar(novo, velho) {
+  const cfg = mesclarCfg(novo.cfg || {}, velho.cfg || {});
+  const apagados = new Set(cfg.del.map(d => d.i));
+  const junta = k => {
+    const m = new Map();
+    for (const r of velho[k] || []) if (r && r.i) m.set(r.i, r);
+    for (const r of novo[k] || []) if (r && r.i) m.set(r.i, r);
+    return [...m.values()].filter(r => !apagados.has(r.i));
+  };
+  let compras = junta('compras'), pags = junta('pags');
+  // o que a limpeza já levou não volta pela mesclagem
+  const L = cfg.limpeza;
+  if (L && L.ativo !== false && L.ultima) {
+    const corte = Core.addMonths(L.ultima, -(L.meses || 5));
+    compras = compras.map(c => ({ ...c, p: (c.p || []).filter(p => p[2].slice(0, 7) > corte) })).filter(c => c.p.length);
+    pags = pags.filter(p => p.f > corte);
+  }
+  cfg.atualizado = AGORA();
+  return { app: 'caderneta', versao: 1, cfg, compras, pags };
+}
+
+/* estado visível da sincronização (botão + barra de progresso) */
+const Sync = {
+  ativo: false, pct: 0, etapa: '', erro: false, ultimo: null, rodando: false,
+  passo(pct, etapa) { this.ativo = true; this.pct = pct; this.etapa = etapa; this.erro = false; pintarSync(); },
+  fim(etapa, erro) {
+    this.pct = 100; this.etapa = etapa; this.erro = !!erro;
+    if (!erro) this.ultimo = new Date();
+    pintarSync();
+    clearTimeout(this._t);
+    this._t = setTimeout(() => { this.ativo = false; pintarSync(); }, erro ? 7000 : 2200);
+  },
+};
+function pintarSync() {
+  const bar = $('#sync-bar');
+  if (bar) {
+    bar.hidden = !Sync.ativo;
+    bar.classList.toggle('err', Sync.erro);
+    bar.classList.toggle('ok', Sync.pct >= 100 && !Sync.erro);
+    bar.querySelector('i').style.width = Sync.pct + '%';
+    bar.querySelector('span').textContent = Sync.etapa;
+    bar.setAttribute('aria-valuenow', Math.round(Sync.pct));
+  }
+  const b = $('#btn-sync');
+  if (b) {
+    const ocupado = Sync.rodando;
+    b.classList.toggle('girando', ocupado);
+    b.disabled = ocupado;
+    const lbl = b.querySelector('.act-label');
+    if (lbl) lbl.textContent = ocupado ? 'Atualizando…' : 'Atualizar';
+  }
+  status();
+}
+
 const Store = {
-  mode: 'local', dirty: new Set(), timer: null, busy: false, err: null, ultimo: null, precisaClique: false,
-  pacote() { return { app: 'caderneta', versao: 1, cfg: { ...S.cfg, atualizado: new Date().toISOString() }, compras: S.compras, pags: S.pags }; },
+  mode: 'local', dirty: new Set(), timer: null, busy: false, err: null, ultimo: null, precisaClique: false, tentando: false,
+  pacote() { S.cfg.atualizado ??= AGORA(); return { app: 'caderneta', versao: 1, cfg: S.cfg, compras: S.compras, pags: S.pags }; },
   cache(p) { try { localStorage.setItem('caderneta-dados', JSON.stringify(p || this.pacote())); } catch (e) { } },
   lerCache() { try { const r = localStorage.getItem('caderneta-dados'); return r ? JSON.parse(r) : null; } catch (e) { return null; } },
-  mark() { this.dirty.add('tudo'); status(); clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 1200); },
+  mark() { S.cfg.atualizado = AGORA(); this.dirty.add('tudo'); status(); clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 1200); },
   markAll() { this.mark(); },
+  /* registra uma exclusão feita de propósito, para ela não voltar do outro aparelho */
+  apagou(...ids) {
+    const D = S.cfg.del ??= [];
+    const t = AGORA();
+    for (const i of ids) if (i) D.push({ i, t });
+    S.cfg.del = podarTumulos(D);
+  },
 
   async flush(forcar) {
     if (!this.dirty.size && !forcar) return;
@@ -2776,7 +2899,13 @@ const Store = {
       } catch (e) {
         console.error(e);
         this.dirty.add('tudo');
-        if (e.conflito) { this.err = 'O arquivo mudou em outro aparelho.'; this.busy = false; status(); conflito(); return; }
+        if (e.conflito) {
+          // outro aparelho gravou primeiro: baixa, junta e grava de novo
+          this.busy = false; status();
+          if (!this.tentando) { this.tentando = true; try { await sincronizar(); } finally { this.tentando = false; } }
+          clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 3000);
+          return;
+        }
         if (e.semSessao) { this.precisaClique = true; this.err = 'Acesso ao Google expirou. Salvo neste aparelho.'; }
         else { this.err = 'Sem conexão com o Drive. Salvo neste aparelho; tentando de novo.'; clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 15000); }
       }
@@ -2789,7 +2918,7 @@ const Store = {
     const tk = await Auth.acessar(false);
     if (!tk) { toast('Não consegui entrar na conta Google'); return false; }
     this.mode = 'drive'; this.precisaClique = false; this.err = null; status();
-    await sincronizar();
+    await sincronizar(true);
     return true;
   },
 };
@@ -2806,54 +2935,100 @@ function status() {
   el.classList.toggle('err', !!Store.err);
   if (Store.precisaClique) el.innerHTML = `Alterações guardadas aqui.<br><button class="btn link small" data-act="conectar">Reconectar ao Google Drive</button>`;
   else if (Store.err) el.innerHTML = esc(Store.err);
+  else if (Sync.rodando) el.innerHTML = 'Sincronizando…';
   else if (Store.busy || Store.dirty.size) el.innerHTML = 'Salvando…';
-  else if (Store.mode === 'drive') el.innerHTML = `<b>Salvo no Google Drive</b> ${quandoTxt(Store.ultimo)}`;
+  else if (Store.mode === 'drive') el.innerHTML = `<b>Sincronizado</b> ${quandoTxt(Sync.ultimo || Store.ultimo)}<br><span class="small">Google Drive</span>`;
   else el.innerHTML = `<b>Salvo neste aparelho</b><br><button class="btn link small" data-act="conectar">Conectar ao Google Drive</button>`;
 }
 window.addEventListener('beforeunload', e => { if (Store.dirty.size || Store.busy) e.preventDefault(); });
-window.addEventListener('online', () => { if (Store.dirty.size) Store.flush(); });
 
-async function conflito() {
-  const d = $('#conf');
-  d.innerHTML = `<form method="dialog"><div class="dlg-head"><h2>Versões diferentes</h2></div>
-  <div class="dlg-body"><p class="full" style="margin:0">A Caderneta no Google Drive foi alterada em outro aparelho depois que esta página abriu. Escolha qual versão vale.</p></div>
-  <div class="dlg-foot"><button class="btn" value="nuvem">Usar a do Drive</button><button class="btn primary" value="aqui">Manter a deste aparelho</button></div></form>`;
-  d.showModal();
-  d.onclose = async () => {
-    if (d.returnValue === 'aqui') { Store.err = null; await Store.flush('forcar'); }
-    else { try { const j = await Cloud.baixar(); if (j && j.cfg) { aplicar(j); Store.cache(j); Store.dirty.clear(); Store.ultimo = new Date(); toast('Versão do Drive carregada'); } Store.err = null; status(); } catch (e) { toast('Não consegui baixar agora'); return; } }
-    await posCarga();
-  };
-}
-
-/* compara o que está no Drive com o que está aqui */
-async function sincronizar() {
-  let j = null;
-  try { j = await Cloud.baixar(); }
-  catch (e) {
-    console.error(e);
-    if (e.semSessao) { Store.precisaClique = true; Store.mode = 'drive'; }
-    else Store.err = 'Não consegui ler o Drive: ' + e.message;
-    status(); return;
-  }
-  Store.mode = 'drive';
-  const local = S.ready ? Store.pacote() : Store.lerCache();
-  const tLocal = local && local.cfg && local.cfg.atualizado;
-  const tDrive = j && j.cfg && j.cfg.atualizado;
-  if (j && j.cfg) {
-    if (!local || !tLocal || (tDrive && tDrive > tLocal && !Store.dirty.size)) {
-      aplicar(j); Store.cache(j); Store.ultimo = new Date(); Store.err = null; status(); await posCarga(); return;
+/* Baixa, junta com o que está aqui e grava de volta. `manual` = veio do botão. */
+async function sincronizar(manual) {
+  if (Sync.rodando) return;
+  Sync.rodando = true;
+  Sync.passo(8, 'Procurando no Google Drive…');
+  try {
+    const verAntes = Cloud.versao;
+    let meta = null;
+    try { meta = await Cloud.achar(); }
+    catch (e) {
+      console.error(e);
+      if (e.semSessao) { Store.precisaClique = true; Store.mode = 'drive'; Sync.fim('Entre de novo na conta Google', true); }
+      else { Store.err = 'Não consegui ler o Drive: ' + e.message; Sync.fim('Não consegui falar com o Drive', true); }
+      return;
     }
-    if (Store.dirty.size && tDrive && tLocal && tDrive > tLocal) { Store.err = null; status(); conflito(); return; }
-    if (!S.ready) aplicar(local);
-    if (tLocal && (!tDrive || tLocal > tDrive)) { Store.mark(); await posCarga(); return; }
-    Store.ultimo = new Date(); Store.err = null; status(); await posCarga(); return;
+    Store.mode = 'drive'; Store.precisaClique = false; Store.err = null;
+
+    // nada mudou lá e nada mudou aqui: acabou
+    if (meta && S.ready && meta.version && meta.version === verAntes && !Store.dirty.size) {
+      Sync.fim('Tudo em dia'); await posCarga(); return;
+    }
+
+    let j = null;
+    if (meta) {
+      Sync.passo(30, 'Baixando a base de dados…');
+      try { j = await Cloud.conteudo(); }
+      catch (e) { console.error(e); Store.err = 'Não consegui baixar: ' + e.message; Sync.fim('Não consegui baixar a base', true); return; }
+    }
+
+    Sync.passo(60, 'Comparando com o que está aqui…');
+    const local = S.ready ? Store.pacote() : Store.lerCache();
+
+    if (!j || !j.cfg) {                                   // Drive vazio
+      if (local && local.cfg) {
+        if (!S.ready) aplicar(local);
+        Sync.passo(80, 'Enviando seus dados…');
+        Store.mark(); await Store.flush();
+        Sync.fim('Tudo sincronizado'); await posCarga();
+      } else { if (!S.ready) telaPrimeiraVez(); Sync.fim('Ainda não há nada no Drive'); }
+      return;
+    }
+    if (!local || !local.cfg) {                           // primeira vez neste aparelho
+      aplicar(j); Store.cache(j); Store.dirty.clear();
+      Sync.fim('Base de dados carregada'); await posCarga(); return;
+    }
+
+    const tD = (j.cfg.atualizado) || '', tL = (local.cfg.atualizado) || '';
+    if (tD === tL && !Store.dirty.size) {
+      if (!S.ready) aplicar(local);
+      Sync.fim('Tudo em dia'); await posCarga(); return;
+    }
+
+    Sync.passo(72, 'Juntando as alterações…');
+    const antes = { c: (local.compras || []).length, p: (local.pags || []).length };
+    const m = mesclar(tD >= tL ? j : local, tD >= tL ? local : j);
+    const nc = m.compras.length - antes.c, np = m.pags.length - antes.p;
+    aplicar(m); Store.cache(m);
+
+    Sync.passo(88, 'Salvando no Drive…');
+    Store.dirty.add('tudo');
+    await Store.flush();
+    await posCarga();
+    const partes = [];
+    if (nc > 0) partes.push(`${nc} compra${nc > 1 ? 's' : ''}`);
+    if (np > 0) partes.push(`${np} pagamento${np > 1 ? 's' : ''}`);
+    Sync.fim(partes.length ? `Atualizado · ${partes.join(' e ')} de outro aparelho` : 'Tudo sincronizado');
+    if (manual && !partes.length) toast('A base já estava em dia');
+  } catch (e) {
+    console.error(e); Sync.fim('Algo deu errado na sincronização', true);
+  } finally {
+    Sync.rodando = false; pintarSync();
   }
-  // nada no Drive ainda
-  if (local && local.cfg) { if (!S.ready) aplicar(local); Store.mark(); toast('Enviando seus dados para o Drive'); await posCarga(); return; }
-  if (!S.ready) telaPrimeiraVez();
-  status();
 }
+
+/* atualiza sozinho: ao voltar para a aba, ao reconectar e de minuto em minuto */
+let ultimoAuto = 0;
+async function autoSync() {
+  if (!S.ready || Store.mode !== 'drive' || Store.precisaClique || Sync.rodando) return;
+  if (document.hidden || !navigator.onLine) return;
+  if (Date.now() - ultimoAuto < 20000) return;
+  ultimoAuto = Date.now();
+  await sincronizar();
+}
+setInterval(autoSync, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) autoSync(); });
+window.addEventListener('focus', autoSync);
+window.addEventListener('online', () => { ultimoAuto = 0; if (Store.dirty.size) Store.flush(); autoSync(); });
 
 /* ===== Telas de entrada ===== */
 function telaConfig(msg) {
@@ -2915,7 +3090,7 @@ function aplicar(j) {
 }
 function iniciar() {
   reindex(); S.ready = true;
-  S.cfg.cobr ??= []; S.cfg.fat ??= {}; S.cfg.obs ??= {}; S.cfg.plan ??= DEFAULT_CFG().plan;
+  S.cfg.cobr ??= []; S.cfg.fat ??= {}; S.cfg.obs ??= {}; S.cfg.del ??= []; S.cfg.plan ??= DEFAULT_CFG().plan;
   if (S.cfg.taxa != null) { delete S.cfg.taxa; Store.dirty.add('tudo'); }
   for (const m of S.cfg.meios || []) if (m.t !== 'cartao' && !m.f) { m.f = 13; Store.dirty.add('tudo'); }
   const vistos = new Set();
