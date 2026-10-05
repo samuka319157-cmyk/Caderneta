@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15262B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Extrato">
+<title>Caderneta · Extrato</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%BE%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E9EEEC; --sheet:#FAFBFA; --sheet-2:#F1F5F3; --ink:#15262B; --ink-2:#51646A; --ink-3:#7F9095;
+  --rule:#CAD5D1; --rule-2:#DFE6E3;
+  --owed:#A94F08; --paid:#1B7550; --credit:#2A5DB0; --stamp:#9E2A4E; --focus:#2457C5;
+  --warn-bg:#FBEFD9; --warn:#8A4B00; --r:10px; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1719; --sheet:#172225; --sheet-2:#1C292C; --ink:#E2EBE8; --ink-2:#9FB1AE; --ink-3:#71827F;
+    --rule:#2D3C3F; --rule-2:#233033;
+    --owed:#F0A45E; --paid:#5CC795; --credit:#7FA8F0; --stamp:#EE7C9F; --focus:#8DB0FF;
+    --warn-bg:#3A2A12; --warn:#F2C27A; color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.45 Manrope,system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-text-size-adjust:100%}
+#app{max-width:680px;margin:0 auto;padding:0 16px 56px}
+h1,h2{margin:0}
+.owed{color:var(--owed)} .paid{color:var(--paid)} .muted{color:var(--ink-3)}
+.small{font-size:13px}
+.chip{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px;background:var(--sheet-2);border:1px solid var(--rule);color:var(--ink-2);vertical-align:1px}
+.notice{background:var(--warn-bg);color:var(--warn);border-radius:var(--r);padding:10px 14px;margin:12px 0;font-size:14px;font-weight:600}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);
+  border-radius:8px;padding:9px 14px;cursor:pointer;font:inherit;font-weight:700}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.small{padding:6px 11px;font-size:13px}
+.btn.link{border:0;background:0;color:var(--focus);text-decoration:underline;padding:2px 4px}
+.btn:disabled{opacity:.45;cursor:default}
+.icon-btn{border:1px solid var(--rule);background:var(--sheet);color:var(--ink);border-radius:8px;width:38px;height:38px;
+  font-size:22px;line-height:1;cursor:pointer}
+.icon-btn:disabled{opacity:.35;cursor:default}
+.field{display:block;font-size:13px;font-weight:700;color:var(--ink-2)}
+.field input{display:block;width:100%;margin-top:4px;padding:10px;border:1px solid var(--rule);border-radius:8px;
+  background:var(--sheet);color:var(--ink);font:inherit}
+.welcome{padding:48px 0 0}
+.welcome h1{font-size:30px;font-weight:800;letter-spacing:-.02em}
+.welcome p{color:var(--ink-2)}
+
+.ext-top{display:flex;align-items:center;gap:12px;padding:20px 0 6px}
+.ext-quem{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.ext-sub{font-size:13px;color:var(--ink-3)}
+.ext-top .btn{margin-left:auto}
+.ext-mes{display:flex;align-items:center;gap:10px;padding:8px 0 14px;border-bottom:2px solid var(--ink)}
+.ext-mes h1{flex:1;text-align:center;font-size:21px;font-weight:800;letter-spacing:-.01em}
+.ext-mes h1 span{color:var(--ink-3);font-weight:600}
+.ext-topo{display:flex;align-items:center;gap:14px;padding:18px 0 8px}
+.ext-falta{flex:1;min-width:0}
+.ext-falta .lbl{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.ext-falta .val{font-size:38px;font-weight:800;letter-spacing:-.025em;line-height:1.1}
+.ext-falta .hint{font-size:13px;color:var(--ink-3);margin-top:2px}
+.stamp{border:2px solid currentColor;border-radius:5px;padding:2px 9px;font-size:12px;font-weight:800;transform:rotate(-3deg);white-space:nowrap}
+.stamp.aberto{color:var(--stamp)} .stamp.parcial{color:var(--owed);border-style:dashed}
+.stamp.quitado{color:var(--paid)} .stamp.credito{color:var(--credit)}
+.ext-obs{background:var(--sheet);border-left:4px solid var(--owed);border-radius:0 var(--r) var(--r) 0;
+  padding:11px 14px;margin:10px 0 0;font-size:14px;line-height:1.4}
+.ext-obs b{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.ext-sec{margin-top:26px}
+.ext-sec h2{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);
+  padding-bottom:6px;border-bottom:1px solid var(--rule)}
+.ext-sec h2 span{color:var(--ink-3)}
+.ext-item{display:flex;align-items:center;gap:12px;padding:9px 2px;border-bottom:1px solid var(--rule-2)}
+.ext-item .t{font-weight:600;line-height:1.25}
+.ext-item .meta{font-size:12.5px;color:var(--ink-3)}
+.ext-item .v{margin-left:auto;font-weight:700;white-space:nowrap}
+.ext-vazio{padding:18px 0;color:var(--ink-3);text-align:center}
+.ext-total{display:flex;align-items:baseline;gap:12px;padding:12px 2px 0;border-top:2px solid var(--ink);margin-top:-1px;font-weight:700}
+.ext-total b{margin-left:auto;font-size:19px;font-weight:800}
+.ext-meses{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;margin-top:10px}
+.ext-mesbt{display:flex;flex-direction:column;gap:1px;align-items:flex-start;background:var(--sheet);border:1px solid var(--rule);
+  border-radius:var(--r);padding:9px 11px;cursor:pointer;font:inherit;color:var(--ink);text-align:left}
+.ext-mesbt.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.ext-mesbt span{font-size:12px;font-weight:700;color:var(--ink-3);text-transform:capitalize}
+.ext-mesbt b{font-size:15px;font-weight:800}
+.ext-mesbt small{font-size:11px;color:var(--ink-3)}
+.ext-pe{margin-top:30px;padding-top:12px;border-top:1px solid var(--rule-2);font-size:12.5px;color:var(--ink-3)}
+@media (max-width:420px){
+  .ext-quem{font-size:22px}
+  .ext-falta .val{font-size:32px}
+}
+
+</style>
+</head>
+<body>
+<div id="app"><div class="welcome" style="padding-top:90px"><h1>Caderneta · Extrato</h1><p>Carregando…</p></div></div>
+<script>
+/* ===== Caderneta · Extrato — app de leitura para quem deve =====
+   Entra com a conta Google, abre o arquivo que foi compartilhado com essa conta
+   e mostra só os lançamentos daquela pessoa. Não grava nada. */
+
+/* O mesmo ID do cliente do app principal. A chave de API é usada só pela janela
+   de seleção de arquivo do Google (Picker); pode ficar aqui, ela é restrita ao
+   endereço do site. Se estiver em branco, o app pergunta na primeira vez. */
+const CLIENT_ID_PADRAO = '448501927423-q1f8pq4bp8n79i18h0bpg10lnshc2n9i.apps.googleusercontent.com';
+const API_KEY_PADRAO = 'AIzaSyBdbey5JqhyLshT6OcxAhiuuTf20-D4wd0';
+
+const GIS = 'https://accounts.google.com/gsi/client';
+const GAPI = 'https://apis.google.com/js/api.js';
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const API = 'https://www.googleapis.com/drive/v3';
+
+const $ = (q, r = document) => r.querySelector(q);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const brl = v => (v < 0 ? '-' : '') + 'R$ ' + Math.abs(Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dataBR = d => d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4) : '';
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const mesNome = m => MESES[+m.slice(5, 7) - 1];
+const mesCurto = m => mesNome(m).slice(0, 3) + '/' + m.slice(2, 4);
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const hoje = () => { const d = new Date(); const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+
+const V = { dados: null, mes: null, conta: null };
+const guarda = {
+  get clientId() { return localStorage.getItem('extrato-clientid') || CLIENT_ID_PADRAO; },
+  set clientId(v) { localStorage.setItem('extrato-clientid', v); },
+  get apiKey() { return localStorage.getItem('extrato-apikey') || API_KEY_PADRAO; },
+  set apiKey(v) { localStorage.setItem('extrato-apikey', v); },
+  get fileId() { return localStorage.getItem('extrato-fileid') || ''; },
+  set fileId(v) { v ? localStorage.setItem('extrato-fileid', v) : localStorage.removeItem('extrato-fileid'); },
+  get cache() { try { return JSON.parse(localStorage.getItem('extrato-dados') || 'null'); } catch (e) { return null; } },
+  set cache(v) { try { localStorage.setItem('extrato-dados', JSON.stringify(v)); } catch (e) { } },
+};
+
+function carregarScript(src, pronto) {
+  return new Promise((ok, err) => {
+    if (pronto()) return ok();
+    const s = document.createElement('script');
+    s.src = src; s.async = true; s.defer = true;
+    s.onload = () => ok();
+    s.onerror = () => err(new Error('Sem conexão com o Google. Tente de novo.'));
+    document.head.appendChild(s);
+  });
+}
+
+const Auth = {
+  token: null, exp: 0, pedindo: null,
+  async pedir(silencioso) {
+    if (this.pedindo) return this.pedindo;
+    await carregarScript(GIS, () => window.google && google.accounts && google.accounts.oauth2);
+    this.pedindo = new Promise(resolve => {
+      let feito = false;
+      const fim = v => { if (feito) return; feito = true; this.pedindo = null; resolve(v); };
+      try {
+        google.accounts.oauth2.initTokenClient({
+          client_id: guarda.clientId, scope: SCOPE,
+          prompt: silencioso ? 'none' : '',
+          callback: r => {
+            if (r && r.access_token) { this.token = r.access_token; this.exp = Date.now() + ((r.expires_in || 3600) - 300) * 1000; fim(this.token); }
+            else fim(null);
+          },
+          error_callback: () => fim(null),
+        }).requestAccessToken();
+      } catch (e) { console.warn(e); fim(null); }
+      setTimeout(() => fim(null), silencioso ? 8000 : 120000);
+    });
+    return this.pedindo;
+  },
+  async acessar(silencioso) {
+    if (this.token && Date.now() < this.exp) return this.token;
+    this.token = null;
+    return this.pedir(silencioso);
+  },
+  sair() {
+    const t = this.token; this.token = null; this.exp = 0;
+    try { if (t && window.google) google.accounts.oauth2.revoke(t, () => { }); } catch (e) { }
+  },
+};
+
+async function baixar(id) {
+  const tk = await Auth.acessar(true);
+  if (!tk) { const e = new Error('sem sessão'); e.semSessao = true; throw e; }
+  const r = await fetch(`${API}/files/${id}?alt=media`, { headers: { Authorization: 'Bearer ' + tk } });
+  if (r.status === 401 || r.status === 403) { const e = new Error('sem acesso'); e.semAcesso = true; throw e; }
+  if (r.status === 404) { const e = new Error('não encontrado'); e.sumiu = true; throw e; }
+  if (!r.ok) throw new Error('O Google Drive respondeu ' + r.status);
+  return r.json();
+}
+
+/* janela do Google para a pessoa escolher o arquivo compartilhado com ela */
+async function escolherArquivo() {
+  const tk = await Auth.acessar(false);
+  if (!tk) throw new Error('Não consegui entrar na conta Google.');
+  await carregarScript(GAPI, () => window.gapi);
+  await new Promise(ok => gapi.load('picker', ok));
+  return new Promise((ok, err) => {
+    try {
+      const vista = new google.picker.DocsView(google.picker.ViewId.DOCS)
+        .setIncludeFolders(false).setOwnedByMe(false).setMode(google.picker.DocsViewMode.LIST);
+      const p = new google.picker.PickerBuilder()
+        .addView(vista)
+        .setOAuthToken(tk)
+        .setDeveloperKey(guarda.apiKey)
+        .setTitle('Escolha o arquivo caderneta-extrato com o seu nome')
+        .setCallback(d => {
+          if (d.action === google.picker.Action.PICKED) ok(d.docs[0].id);
+          else if (d.action === google.picker.Action.CANCEL) ok(null);
+        })
+        .build();
+      p.setVisible(true);
+    } catch (e) { err(e); }
+  });
+}
+
+/* ===== Telas ===== */
+function tela(html) { $('#app').innerHTML = html; }
+
+function telaConfig(msg) {
+  tela(`<div class="welcome">
+    <h1>Caderneta · Extrato</h1>
+    <p>Falta um dado de configuração deste app. Peça para quem te mandou o link.</p>
+    ${msg ? `<div class="notice">${esc(msg)}</div>` : ''}
+    <label class="field" style="margin:16px 0">Chave de API do Google<input id="k" value="${esc(guarda.apiKey)}" placeholder="AIza…" autocomplete="off" spellcheck="false"></label>
+    <label class="field" style="margin:16px 0">ID do cliente<input id="c" value="${esc(guarda.clientId)}" autocomplete="off" spellcheck="false"></label>
+    <button class="btn primary" id="ok">Salvar</button></div>`);
+  $('#ok').onclick = () => {
+    const k = $('#k').value.trim(), c = $('#c').value.trim();
+    if (!k) { telaConfig('A chave de API é obrigatória.'); return; }
+    guarda.apiKey = k; if (c) guarda.clientId = c;
+    telaEntrar();
+  };
+}
+
+function telaEntrar(msg) {
+  tela(`<div class="welcome">
+    <h1>Caderneta · Extrato</h1>
+    <p>Veja o que você deve, as compras do mês e os pagamentos já registrados. Entre com a <b>mesma conta Google</b> que foi liberada para você.</p>
+    ${msg ? `<div class="notice">${esc(msg)}</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
+      <button class="btn primary" id="entrar">Entrar com o Google</button>
+      ${guarda.cache ? `<button class="btn" id="offline">Ver a última versão baixada</button>` : ''}</div>
+    <p class="small muted" style="margin-top:18px">Na primeira vez o Google abre uma janela para você escolher o arquivo <b>caderneta-extrato</b> com o seu nome, em “Compartilhados comigo”. Depois disso ele abre direto.</p>
+  </div>`);
+  $('#entrar').onclick = () => abrir(true);
+  const off = $('#offline'); if (off) off.onclick = () => { V.dados = guarda.cache; V.mes = mesInicial(); render(true); };
+}
+
+function telaCarregando(txt) {
+  tela(`<div class="welcome" style="padding-top:90px"><h1>Caderneta · Extrato</h1><p>${esc(txt || 'Carregando…')}</p>
+    <div class="sync-bar" style="margin-top:14px" hidden></div></div>`);
+}
+
+function mesInicial() {
+  const ms = (V.dados && V.dados.meses) || [];
+  if (!ms.length) return null;
+  const cur = hoje().slice(0, 7);
+  return ms.includes(cur) ? cur : (ms.filter(m => m <= cur).pop() || ms[0]);
+}
+
+async function abrir(interativo) {
+  try {
+    if (!guarda.apiKey) return telaConfig();
+    telaCarregando('Entrando na sua conta Google…');
+    let tk = await Auth.acessar(!interativo);
+    if (!tk && interativo) tk = await Auth.acessar(false);
+    if (!tk) return telaEntrar('O Google não liberou o acesso. Se uma janela foi bloqueada, permita pop-ups para este endereço.');
+
+    let id = guarda.fileId;
+    if (!id) {
+      telaCarregando('Escolha o seu arquivo na janela do Google…');
+      id = await escolherArquivo();
+      if (!id) return telaEntrar('Nenhum arquivo escolhido.');
+      guarda.fileId = id;
+    }
+    telaCarregando('Baixando o seu extrato…');
+    const j = await baixar(id);
+    if (!j || j.app !== 'caderneta-extrato') {
+      guarda.fileId = '';
+      return telaEntrar('Esse arquivo não é um extrato da Caderneta. Tente de novo e escolha o arquivo caderneta-extrato com o seu nome.');
+    }
+    V.dados = j; guarda.cache = j;
+    V.mes = mesInicial();
+    render();
+  } catch (e) {
+    console.error(e);
+    if (e.sumiu || e.semAcesso) {
+      guarda.fileId = '';
+      return telaEntrar('O acesso a esse arquivo mudou. Entre de novo e escolha o arquivo outra vez.');
+    }
+    if (e.semSessao) return telaEntrar('Sua sessão do Google expirou. Entre de novo.');
+    telaEntrar(e.message || 'Algo deu errado.');
+  }
+}
+
+function render(offline) {
+  const D = V.dados;
+  if (!D) return telaEntrar();
+  const ms = D.meses || [];
+  const m = V.mes && ms.includes(V.mes) ? V.mes : mesInicial();
+  V.mes = m;
+  const d = (m && D.dados[m]) || { parc: [], pg: [], total: 0, pago: 0, falta: 0, obs: '' };
+  const i = ms.indexOf(m);
+  const st = Math.abs(d.falta) < 0.005 ? ['Quitado', 'quitado'] : d.falta < 0 ? ['Crédito', 'credito'] : d.pago > 0 ? ['Parcial', 'parcial'] : ['Em aberto', 'aberto'];
+  const venc = d.parc.length ? d.parc.map(p => p.venc).sort().pop() : null;
+  const vencs = [...new Set(d.parc.map(p => p.venc))].sort();
+
+  tela(`
+  <header class="ext-top">
+    <div><div class="ext-quem">${esc(D.nome)}</div>
+      <div class="ext-sub">conta com ${esc(D.de || 'a Caderneta')}${offline ? ' · versão baixada' : ''}</div></div>
+    <button class="btn small" id="atualizar">Atualizar</button>
+  </header>
+
+  <div class="ext-mes">
+    <button class="icon-btn" id="ant" ${i <= 0 ? 'disabled' : ''} aria-label="Mês anterior">‹</button>
+    <h1>${m ? cap(mesNome(m)) + ' <span>' + m.slice(0, 4) + '</span>' : 'Sem lançamentos'}</h1>
+    <button class="icon-btn" id="prox" ${i < 0 || i >= ms.length - 1 ? 'disabled' : ''} aria-label="Próximo mês">›</button>
+  </div>
+
+  <div class="ext-topo">
+    <div class="ext-falta">
+      <div class="lbl">${d.falta < -0.005 ? 'Você tem de crédito' : 'A pagar'}</div>
+      <div class="val ${d.falta > 0.005 ? 'owed' : 'paid'}">${brl(Math.abs(d.falta))}</div>
+      <div class="hint">${vencs.length > 1 ? 'vencimentos ' + vencs.map(dataBR).join(' e ') : venc ? 'vencimento ' + dataBR(venc) : ''}</div>
+    </div>
+    <span class="stamp ${st[1]}">${st[0]}</span>
+  </div>
+
+  ${d.obs ? `<div class="ext-obs"><b>Observação</b><br>${esc(d.obs)}</div>` : ''}
+
+  <section class="ext-sec">
+    <h2>Compras do mês <span>${d.parc.length}</span></h2>
+    <div class="ext-lista">${d.parc.map(p => `<div class="ext-item">
+      <div><div class="t">${esc(p.c) || '—'}${p.n > 1 ? ` <span class="chip">${p.k}/${p.n}</span>` : ''}</div>
+      <div class="meta">${dataBR(p.dt)}</div></div>
+      <div class="v">${brl(p.v)}</div></div>`).join('') || '<div class="ext-vazio">Nenhuma compra neste mês.</div>'}</div>
+    <div class="ext-total"><span>Total das compras</span><b>${brl(d.total)}</b></div>
+  </section>
+
+  ${d.pg.length ? `<section class="ext-sec">
+    <h2>Pagamentos recebidos <span>${d.pg.length}</span></h2>
+    <div class="ext-lista">${d.pg.map(p => `<div class="ext-item">
+      <div><div class="t">${esc(p.m || 'Pagamento')}</div><div class="meta">${dataBR(p.dt)}</div></div>
+      <div class="v paid">− ${brl(p.v)}</div></div>`).join('')}</div>
+    <div class="ext-total"><span>Falta pagar</span><b class="${d.falta > 0.005 ? 'owed' : 'paid'}">${brl(Math.abs(d.falta))}</b></div>
+  </section>` : ''}
+
+  ${ms.length > 1 ? `<section class="ext-sec"><h2>Outros meses</h2>
+    <div class="ext-meses">${ms.map(x => {
+      const y = D.dados[x];
+      return `<button class="ext-mesbt ${x === m ? 'on' : ''}" data-m="${x}">
+        <span>${mesCurto(x)}</span><b class="${y.falta > 0.005 ? 'owed' : 'paid'}">${brl(Math.abs(y.falta))}</b>
+        <small>${Math.abs(y.falta) < 0.005 ? 'quitado' : y.falta < 0 ? 'crédito' : 'a pagar'}</small></button>`;
+    }).join('')}</div></section>` : ''}
+
+  <footer class="ext-pe">Atualizado em ${dataBR((D.gerado || '').slice(0, 10))} · somente leitura
+    <button class="btn link small" id="trocar">trocar de arquivo</button></footer>`);
+
+  $('#ant').onclick = () => { V.mes = ms[i - 1]; render(offline); };
+  $('#prox').onclick = () => { V.mes = ms[i + 1]; render(offline); };
+  $('#atualizar').onclick = () => abrir(true);
+  $('#trocar').onclick = () => { guarda.fileId = ''; Auth.sair(); telaEntrar('Escolha o arquivo de novo.'); };
+  document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { V.mes = b.dataset.m; render(offline); window.scrollTo(0, 0); });
+}
+
+/* ===== Início ===== */
+(async function () {
+  if (!guarda.apiKey) return telaConfig();
+  if (!guarda.fileId) return telaEntrar();
+  const c = guarda.cache;
+  if (c) { V.dados = c; V.mes = mesInicial(); render(true); }
+  else telaCarregando();
+  try {
+    const tk = await Auth.acessar(true);
+    if (!tk) { if (!c) telaEntrar(); return; }
+    const j = await baixar(guarda.fileId);
+    if (j && j.app === 'caderneta-extrato') { V.dados = j; guarda.cache = j; V.mes = mesInicial(); render(); }
+  } catch (e) {
+    console.warn(e);
+    if (!c) telaEntrar(e.sumiu || e.semAcesso ? 'O acesso a esse arquivo mudou. Entre de novo.' : '');
+  }
+})();
+
+</script>
+</body>
+</html>
