@@ -198,10 +198,15 @@ async function escolherArquivo() {
   await new Promise(ok => gapi.load('picker', ok));
   return new Promise((ok, err) => {
     try {
-      const vista = new google.picker.DocsView(google.picker.ViewId.DOCS)
-        .setIncludeFolders(false).setOwnedByMe(false).setMode(google.picker.DocsViewMode.LIST);
+      const vista = (meus) => {
+        const v = new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setIncludeFolders(false).setOwnedByMe(meus).setMode(google.picker.DocsViewMode.LIST);
+        try { v.setLabel(meus ? 'Meu Drive' : 'Compartilhados comigo'); } catch (e) { }
+        return v;
+      };
       const p = new google.picker.PickerBuilder()
-        .addView(vista)
+        .addView(vista(false))
+        .addView(vista(true))
         .setOAuthToken(tk)
         .setDeveloperKey(guarda.apiKey)
         .setTitle('Escolha o arquivo caderneta-extrato com o seu nome')
