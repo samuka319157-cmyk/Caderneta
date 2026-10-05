@@ -133,6 +133,8 @@ const guarda = {
   set fileId(v) { v ? localStorage.setItem('extrato-fileid', v) : localStorage.removeItem('extrato-fileid'); },
   get cache() { try { return JSON.parse(localStorage.getItem('extrato-dados') || 'null'); } catch (e) { return null; } },
   set cache(v) { try { localStorage.setItem('extrato-dados', JSON.stringify(v)); } catch (e) { } },
+  /* trocou de conta ou perdeu o acesso: não deixa sobrar o extrato de outra pessoa aqui */
+  esquecer() { this.fileId = ''; try { localStorage.removeItem('extrato-dados'); } catch (e) { } V.dados = null; },
 };
 
 function carregarScript(src, pronto) {
@@ -283,7 +285,7 @@ async function abrir(interativo) {
     telaCarregando('Baixando o seu extrato…');
     const j = await baixar(id);
     if (!j || j.app !== 'caderneta-extrato') {
-      guarda.fileId = '';
+      guarda.esquecer();
       return telaEntrar('Esse arquivo não é um extrato da Caderneta. Tente de novo e escolha o arquivo caderneta-extrato com o seu nome.');
     }
     V.dados = j; guarda.cache = j;
@@ -292,8 +294,8 @@ async function abrir(interativo) {
   } catch (e) {
     console.error(e);
     if (e.sumiu || e.semAcesso) {
-      guarda.fileId = '';
-      return telaEntrar('O acesso a esse arquivo mudou. Entre de novo e escolha o arquivo outra vez.');
+      guarda.esquecer();
+      return telaEntrar('Este navegador estava apontando para um arquivo que esta conta não pode abrir. Clique em “Entrar com o Google” e escolha o seu arquivo na janela que abrir.');
     }
     if (e.semSessao) return telaEntrar('Sua sessão do Google expirou. Entre de novo.');
     telaEntrar(e.message || 'Algo deu errado.');
@@ -367,7 +369,7 @@ function render(offline) {
   $('#ant').onclick = () => { V.mes = ms[i - 1]; render(offline); };
   $('#prox').onclick = () => { V.mes = ms[i + 1]; render(offline); };
   $('#atualizar').onclick = () => abrir(true);
-  $('#trocar').onclick = () => { guarda.fileId = ''; Auth.sair(); telaEntrar('Escolha o arquivo de novo.'); };
+  $('#trocar').onclick = () => { guarda.esquecer(); Auth.sair(); telaEntrar('Escolha o arquivo de novo.'); };
   document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { V.mes = b.dataset.m; render(offline); window.scrollTo(0, 0); });
 }
 
@@ -385,7 +387,8 @@ function render(offline) {
     if (j && j.app === 'caderneta-extrato') { V.dados = j; guarda.cache = j; V.mes = mesInicial(); render(); }
   } catch (e) {
     console.warn(e);
-    if (!c) telaEntrar(e.sumiu || e.semAcesso ? 'O acesso a esse arquivo mudou. Entre de novo.' : '');
+    if (e.sumiu || e.semAcesso) { guarda.esquecer(); return telaEntrar('Este navegador estava apontando para um arquivo que esta conta não pode abrir. Clique em “Entrar com o Google” e escolha o seu arquivo na janela que abrir.'); }
+    if (!c) telaEntrar('');
   }
 })();
 
