@@ -244,6 +244,7 @@ tr:hover .nota-bt.vazia,.nota-bt.vazia:focus-visible,.ledger-head .nota-bt.vazia
 .sync-bar.err span{color:var(--owed)}
 .sync-bar.ok span{color:var(--paid)}
 @media (max-width:900px){.sync-btn .act-label{display:none}}
+.chk-filtro{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-weight:600;color:var(--ink-2)}
 
 </style>
 </head>
@@ -543,7 +544,7 @@ const S = {
   cfg: null, compras: [], pags: [], idx: new Map(),
   view: 'resumo', mes: Core.todayISO().slice(0, 7),
   devSel: null, devModo: 'mes', soAberto: false,
-  lf: { q: '', d: '', m: '', st: 'aberto', lim: 80 },
+  lf: { q: '', d: '', m: '', st: 'aberto', parc: false, lim: 80 },
   pf: { d: '', per: 'mes', q: '' },
   ready: false,
 };
@@ -702,7 +703,7 @@ function vResumo() {
     <td class="n">${f.pend ? brl(f.pend) : '—'}</td>
     <td class="n" style="width:120px">${inp(`fat.${S.mes}.${f.meio.n}.p`, 'num', 'placeholder="0,00"')}</td>
     <td class="n ${difCls}" title="Calculado − informado − assinaturas a cobrar − pago">${f.dif == null ? '—' : brl(f.dif)}</td>
-    <td><button class="btn link small" data-act="conferir" data-m="${esc(f.meio.n)}">Conferir PDF</button></td></tr>`;
+    <td><div class="row-actions"><button class="btn link small" data-act="conferir" data-m="${esc(f.meio.n)}">PDF</button><button class="btn link small" data-act="conferir" data-modo="csv" data-m="${esc(f.meio.n)}">CSV</button></div></td></tr>`;
   }).join('');
 
   // próximos 6 meses
@@ -743,9 +744,9 @@ function vResumo() {
   </section>
 
   <section class="sec">
-    <div class="sec-head"><h2>Conferência das faturas</h2><p>Digite o valor que aparece no app do banco. A diferença considera as assinaturas que ainda vão cair.</p></div>
+    <div class="sec-head"><h2>Conferência das faturas</h2><p>Digite o valor que aparece no app do banco. A diferença considera as assinaturas que ainda vão cair. Em <b>Conferir</b>: <b>PDF</b> para a fatura já fechada, <b>CSV</b> para analisar a qualquer momento, mesmo com a fatura aberta.</p></div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Cartão</th><th class="n">Calculado</th><th class="n">Informado</th><th class="n">Assinaturas a cobrar</th><th class="n">Pago</th><th class="n">Diferença</th><th></th></tr></thead>
+      <thead><tr><th>Cartão</th><th class="n">Calculado</th><th class="n">Informado</th><th class="n">Assinaturas a cobrar</th><th class="n">Pago</th><th class="n">Diferença</th><th>Conferir</th></tr></thead>
       <tbody>${fatRows}
       <tr><td><span class="dot" style="background:${meioCor('Dinheiro')}"></span><b>Dinheiro</b> <span class="muted small">emprestado</span></td><td class="n">${brl(R.dinheiro.calc)}</td><td class="n muted">—</td><td class="n muted">—</td>
       <td class="n">${inp(`fat.${S.mes}.Dinheiro.p`, 'num', 'placeholder="recebido"')}</td><td class="n ${cls(R.dinheiro.falta)}" title="Esperado − recebido">${brl(R.dinheiro.falta)}</td><td></td></tr></tbody>
@@ -873,6 +874,7 @@ function vLancamentos() {
   if (f.st === 'aberto') cs = cs.filter(c => ultimo(c) >= S.mes);
   if (f.st === 'mes') cs = cs.filter(c => c.p.some(p => p[2].slice(0, 7) === S.mes));
   if (f.st === 'quitado') cs = cs.filter(c => ultimo(c) < S.mes);
+  if (f.parc) cs = cs.filter(c => c.n > 1);
   cs.sort((a, b) => b.dt.localeCompare(a.dt) || a.d.localeCompare(b.d));
   const total = cs.reduce((s, c) => s + c.p.filter(p => p[2].slice(0, 7) >= S.mes).reduce((x, p) => x + p[1], 0), 0);
   const itens = cs.slice(0, f.lim).map(c => {
@@ -895,8 +897,9 @@ function vLancamentos() {
       <select data-lf="d" aria-label="Devedor">${opt(devsTodos(), f.d, 'Todos os devedores')}</select>
       <select data-lf="m" aria-label="Meio">${opt(S.cfg.meios.map(m => m.n), f.m, 'Todos os meios')}</select>
       <div class="seg">${[['aberto', 'Em aberto'], ['mes', 'Neste mês'], ['quitado', 'Quitadas'], ['todas', 'Todas']].map(([k, t]) => `<button data-act="lf-st" data-v="${k}" aria-pressed="${f.st === k}">${t}</button>`).join('')}</div>
+      <label class="small chk-filtro"><input type="checkbox" data-act="lf-parc" ${f.parc ? 'checked' : ''}> Só parceladas</label>
     </div>
-    <p class="small muted" style="margin:0 0 8px">${cs.length} compras · a pagar de ${mesCurto(S.mes)} em diante: <b style="color:var(--ink)">${brl(total)}</b>${nRecOcultas ? ` · cobranças mensais de outros meses ocultas (busque pelo nome para ver)` : ''}</p>
+    <p class="small muted" style="margin:0 0 8px">${cs.length} ${f.parc ? 'compras parceladas' : 'compras'} · a pagar de ${mesCurto(S.mes)} em diante: <b style="color:var(--ink)">${brl(total)}</b>${nRecOcultas ? ` · cobranças mensais de outros meses ocultas (busque pelo nome para ver)` : ''}</p>
     <div class="tbl-wrap lanc-list">${itens || '<div class="empty">Nenhuma compra encontrada.</div>'}</div>
     ${cs.length > f.lim ? `<p style="text-align:center"><button class="btn" data-act="lf-mais">Mostrar mais (${cs.length - f.lim})</button></p>` : ''}
   </section>`;
@@ -1107,6 +1110,8 @@ function vAjustes() {
     ${(() => { const n = Recorr.suspeitos().length; return n ? `<div class="notice" style="margin-top:10px">${n} cobrança${n > 1 ? 's' : ''} mensa${n > 1 ? 'is' : 'l'} aparece${n > 1 ? 'm' : ''} mais de uma vez no mesmo mês. <button class="btn link" data-act="duplicados">Ver e resolver</button></div>` : ''; })()}
     <p class="small muted">Mudar valor, dia, cartão ou rateio refaz só os meses ainda não cobrados. Lançamentos mensais que você editar ou excluir à mão ficam como estão.</p>
   </section>
+
+  ${vCompartilhar()}
 
   <section class="sec"><div class="sec-head"><h2>Limpeza automática</h2><p>Mantém o arquivo leve removendo faturas antigas. Antes de apagar, salva uma cópia no seu Google Drive.</p></div>
     ${vLimpeza()}
@@ -1456,6 +1461,7 @@ document.addEventListener('click', async e => {
     case 'imagem': dlgImagem(S.devSel, S.mes); break;
     case 'obs': dlgObs(t.dataset.n || S.devSel, t.dataset.m || S.mes); break;
     case 'lf-st': S.lf.st = t.dataset.v; S.lf.lim = 80; render(); break;
+    case 'lf-parc': S.lf.parc = t.checked; S.lf.lim = 80; render(); break;
     case 'lf-mais': S.lf.lim += 120; render(); break;
     case 'pf-per': S.pf.per = t.dataset.v; render(); break;
     case 'plan-manual': { const it = S.cfg.plan.itens[+t.dataset.i]; const R = Core.planejamento(S.cfg, S.mes); it.mn = Core.r2(R.itens.find(x => x.id === it.id).calc); Store.mark('cfg'); render(); break; }
@@ -1478,6 +1484,7 @@ document.addEventListener('click', async e => {
     case 'add-meio': S.cfg.meios.push({ n: 'Novo cartão', t: 'cartao', f: 1, v: 10, x: 0, cor: '#607D8B' }); Store.mark('cfg'); render(); break;
     case 'rateio': dlgRateio(+t.dataset.i); break;
     case 'duplicados': dlgDuplicados(); break;
+    case 'share-pub': case 'share-parar': case 'share-todos': await acaoShare(a, t.dataset.n); break;
     case 'dup-abrir': { const id = t.dataset.id; $('#dlg').close(); setTimeout(() => dlgCompra(id), 60); break; }
     case 'dup-del': {
       const c = S.compras.find(x => x.i === t.dataset.id); if (!c) break;
@@ -1487,7 +1494,9 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'colar': dlgColar(); break;
-    case 'conferir': dlgConferencia(t.dataset.m, S.mes); break;
+    case 'conferir': dlgConferencia(t.dataset.m, S.mes, t.dataset.modo); break;
+    case 'fat-mes': Fat.trocarMes(t.dataset.v); break;
+    case 'fat-outro': Fat.trocarArquivo(); break;
     case 'fat-abrir': case 'fat-lancar': case 'fat-valor': case 'fat-data': case 'fat-excluir':
       await acaoConferencia(a, t.dataset.i); break;
     case 'ver-prob': { const p = problemas()[+t.dataset.i]; if (p && p.lista) dlgLista(p.titulo, p.lista); break; }
@@ -1743,6 +1752,143 @@ const Fat = {
     return r;
   },
 
+  /* ===== CSV do cartão (análise prévia, com a fatura ainda aberta) ===== */
+  sepCSV(txt) {
+    const amostra = txt.split(/\r?\n/).slice(0, 15).join('\n');
+    const c = { ';': 0, ',': 0, '\t': 0, '|': 0 };
+    for (const ch of amostra) if (ch in c) c[ch]++;
+    const [ch, n] = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
+    return n ? ch : ',';
+  },
+  tabelaCSV(txt, sep) {
+    const linhas = []; let campo = '', linha = [], aspas = false;
+    for (let i = 0; i < txt.length; i++) {
+      const ch = txt[i];
+      if (aspas) {
+        if (ch === '"') { if (txt[i + 1] === '"') { campo += '"'; i++; } else aspas = false; }
+        else campo += ch;
+      } else if (ch === '"') aspas = true;
+      else if (ch === sep) { linha.push(campo); campo = ''; }
+      else if (ch === '\n') { linha.push(campo); linhas.push(linha); linha = []; campo = ''; }
+      else if (ch !== '\r') campo += ch;
+    }
+    if (campo || linha.length) { linha.push(campo); linhas.push(linha); }
+    return linhas.filter(l => l.some(c => String(c).trim()));
+  },
+  /* acha a linha de cabeçalho, pulando o preâmbulo que alguns bancos colocam */
+  colunasCSV(tab) {
+    for (let i = 0; i < Math.min(tab.length, 30); i++) {
+      const n = tab[i].map(c => this.norm(c));
+      const ix = re => n.findIndex(x => re.test(x));
+      const data = ix(/^(data|date|dia)\b/);
+      const valor = ix(/^(valor|amount|montante|quantia|value)/);
+      const desc = ix(/descri|lancamento|historico|estabelec|titulo|title|detalhe|movimenta/);
+      if (data >= 0 && valor >= 0 && desc >= 0 && data !== valor && desc !== valor) return { cab: i, data, desc, valor };
+    }
+    return null;
+  },
+  numCSV(s) {
+    let t = String(s).replace(/[^\d,.+-]/g, '').trim();
+    if (!t || !/\d/.test(t)) return NaN;
+    const neg = /^-/.test(t) || /-$/.test(t);
+    t = t.replace(/[+-]/g, '');
+    const ult = Math.max(t.lastIndexOf(','), t.lastIndexOf('.'));
+    if (ult >= 0) {
+      const dec = t.slice(ult + 1);
+      t = (dec.length && dec.length <= 2 && /^\d+$/.test(dec))
+        ? t.slice(0, ult).replace(/[.,]/g, '') + '.' + dec
+        : t.replace(/[.,]/g, '');
+    }
+    const v = Number(t);
+    return isFinite(v) ? (neg ? -v : v) : NaN;
+  },
+  dataCSV(s) {
+    const t = String(s).trim();
+    let m = t.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return `${m[1]}-${Core.pad(+m[2])}-${Core.pad(+m[3])}`;
+    m = t.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+    if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${Core.pad(+m[2])}-${Core.pad(+m[1])}`; }
+    return null;
+  },
+  parcelaDe(desc) {
+    const m = desc.match(/parcela\s*(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/i) || desc.match(/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/);
+    if (!m) return null;
+    const k = +m[1], n = +m[2];
+    if (n < 2 || k < 1 || k > n || n > 60) return null;
+    return { k, n, limpo: desc.replace(m[0], ' ').replace(/\s*[-–—]\s*$/, '').replace(/\s+/g, ' ').trim() };
+  },
+  NAO_COMPRA: /pagamento|pagto|estorno|reembolso|credito|cr[eé]dito recebido|desconto|anuidade|juros|multa|\biof\b|encargo|atraso|ajuste|saldo anterior|parcelamento de fatura|rotativo|cashback|rendimento/i,
+
+  /* devolve {compras, outros, de, ate} ou {erro} */
+  lerCSV(txt, mapa, cartao) {
+    if (!txt || !txt.trim()) return { erro: 'O arquivo está vazio.' };
+    const sep = this.sepCSV(txt);
+    const tab = this.tabelaCSV(txt, sep);
+    if (tab.length < 2) return { erro: 'Não consegui separar as colunas desse arquivo.' };
+    const col = mapa || this.colunasCSV(tab);
+    if (!col) return { erro: 'colunas', tab, sep };
+    const linhas = [];
+    for (let i = col.cab + 1; i < tab.length; i++) {
+      const r = tab[i];
+      const dt = this.dataCSV(r[col.data] || '');
+      const v = this.numCSV(r[col.valor] || '');
+      const desc = String(r[col.desc] || '').replace(/\s+/g, ' ').trim();
+      if (!dt || !isFinite(v) || !v || !desc) continue;
+      linhas.push({ data: dt, desc, v });
+    }
+    if (!linhas.length) return { erro: 'Não achei nenhum lançamento com data, descrição e valor nesse arquivo.' };
+    // alguns bancos exportam a compra como valor negativo; deixa compra sempre positiva
+    const neg = linhas.filter(l => l.v < 0).length;
+    const inverter = neg > linhas.length / 2;
+    const compras = [], outros = [];
+    for (const l of linhas) {
+      const v = inverter ? -l.v : l.v;
+      if (v < 0 || this.NAO_COMPRA.test(l.desc)) { outros.push({ data: l.data, desc: l.desc, valor: v }); continue; }
+      const item = { data: l.data, valor: Math.abs(v), texto: l.desc };
+      if (/nubank/i.test(cartao || '')) {
+        // no Nubank a descrição carrega "Estabelecimento;Devedor;Detalhe (total) - Parcela k/n"
+        const q = this.partesNubank(l.desc);
+        Object.assign(item, { desc: [q.estab, q.texto].filter(Boolean).join(' ').trim() || l.desc, dev: q.dev, marca: q.marca, estab: q.estab, k: q.k, n: q.n, total: q.total });
+      }
+      if (!item.k) {
+        const p = this.parcelaDe(l.desc);
+        item.desc = item.desc || (p ? p.limpo || l.desc : l.desc);
+        if (p) { item.k = p.k; item.n = p.n; }
+      }
+      item.desc = item.desc || l.desc;
+      compras.push(item);
+    }
+    const datas = linhas.map(l => l.data).sort();
+    const de = datas[0], ate = datas[datas.length - 1];
+    const dias = Math.round((new Date(ate) - new Date(de)) / 86400000);
+    /* Arquivo de uma fatura só (período curto): a data de uma parcela já é a do ciclo.
+       Extrato longo: a data é a da compra original, então a parcela k cai k-1 meses depois. */
+    return { compras, outros, de, ate, dias, ciclo: dias <= 45, col, tab, sep };
+  },
+  /* separa as linhas do CSV pelo mês da fatura em que cada compra cai */
+  /* Em parcelados, uns bancos exportam a data da compra original e outros a data do
+     ciclo. Monta os dois cenários e fica com o que concentra melhor as linhas em uma
+     fatura só — num extrato longo de verdade os dois espalham e o deslocamento vale. */
+  porFatura(compras, cartao) {
+    const montar = (usarK) => {
+      const m = new Map();
+      for (const c of compras) {
+        const mes = Core.vencimento(S.cfg, cartao, c.data, usarK ? (c.k || 1) : 1).slice(0, 7);
+        if (!m.has(mes)) m.set(mes, []);
+        m.get(mes).push(c);
+      }
+      return m;
+    };
+    const conc = m => m.size ? Math.max(...[...m.values()].map(x => x.length)) / compras.length : 0;
+    const comK = montar(true), semK = montar(false);
+    const usarK = conc(comK) >= conc(semK);
+    const porMes = usarK ? comK : semK;
+    const maior = Math.max(...[...porMes.values()].map(x => x.length));
+    // mês com poucas linhas do arquivo: dá para apontar o que falta, não o que sobra
+    const parciais = new Set([...porMes.entries()].filter(([, v]) => v.length < Math.max(8, maior * 0.2)).map(([k]) => k));
+    return { porMes, usarK, parciais };
+  },
+
   /* ===== Conferência ===== */
   norm(s) {
     return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -1793,9 +1939,13 @@ const Fat = {
     return achado;
   },
 
-  conferir(banco, pdfCompras, cartao, mes, outros) {
+  conferir(banco, pdfCompras, cartao, mes, outros, janela) {
     this.outrosAtual = (outros || []).map(o => ({ ...o, usado: false }));
-    const apps = this.grupos(cartao, mes).filter(g => Math.abs(g.valor) > 0.005).map(g => ({ ...g, usado: false }));
+    let base = this.grupos(cartao, mes).filter(g => Math.abs(g.valor) > 0.005);
+    // com a fatura ainda aberta, só vale comparar o que o arquivo já cobre; compras
+    // anteriores ao período continuam valendo quando entram por uma parcela
+    if (janela) base = base.filter(g => g.dt <= janela.ate && (g.dt >= janela.de || (g.k || 1) > 1));
+    const apps = base.map(g => ({ ...g, usado: false }));
     const pdfs = pdfCompras.map(p => ({ ...p, usado: false }));
     const pares = [];
     const casar = (teste, motivo) => {
@@ -1815,6 +1965,8 @@ const Fat = {
     casar((p, a) => vIgual(p, a) && p.data === a.dt ? 2 + this.parecido(p.desc, a.desc) : null, 'ok');
     casar((p, a) => vIgual(p, a) && Math.abs(this.dias(p.data, a.dt)) <= 5 ? 1 + this.parecido(p.desc, a.desc) : null, 'ok');
     casar((p, a) => { const s = this.parecido(p.desc, a.desc); return vIgual(p, a) && s >= 0.5 ? s : null; }, 'ok');
+    // mesma parcela k/n e mesmo valor no mesmo cartão: é a mesma compra, mesmo com datas distantes
+    casar((p, a) => vIgual(p, a) && p.k > 1 && a.k === p.k && a.n === p.n ? 1 : null, 'ok');
     // 4. descrição e data batem, valor não  5. descrição muito parecida e parcela igual
     casar((p, a) => { const s = this.parecido(p.desc, a.desc); return p.data === a.dt && s >= 0.34 ? s : null; }, 'valor');
     casar((p, a) => { const s = this.parecido(p.desc, a.desc); return s >= 0.7 && (p.k || 1) === a.k ? s : null; }, 'valor');
@@ -1873,7 +2025,7 @@ const Fat = {
       else if (p.k && a.k && (p.k !== a.k || p.n !== a.n)) div.push({ tipo: 'parcela', p, a });
     }
     for (const p of pdfs) if (!p.usado) div.push({ tipo: 'falta', p });
-    for (const a of apps) if (!a.usado) div.push({ tipo: 'sobra', a });
+    if (!(janela && janela.parcial)) for (const a of apps) if (!a.usado) div.push({ tipo: 'sobra', a });
     const ordem = { valor: 0, data: 1, parcela: 2, falta: 3, sobra: 4, 'data-leve': 9, 'valor-leve': 9 };
     div.sort((x, y) => ordem[x.tipo] - ordem[y.tipo] || ((x.p || x.a).data || (x.a || {}).dt || '').localeCompare((y.p || y.a).data || (y.a || {}).dt || ''));
     const leves = div.filter(d => d.tipo === 'data-leve' || d.tipo === 'valor-leve');
@@ -1894,11 +2046,62 @@ if (typeof module !== 'undefined') module.exports = { Fat };
 /* ===== Tela de conferência ===== */
 Fat.ultimo = null;
 
-function dlgConferencia(cartao, mes) {
+function dlgConferencia(cartao, mes, modo) {
   const d = $('#dlg'); d.className = 'wide';
+  const csv = modo === 'csv';
+  let mesAtual = mes;
   const meio = Core.meioDe(S.cfg, cartao) || { n: cartao };
-  const cab = `<div class="dlg-head"><h2>Conferir fatura · ${esc(cartao)} · ${cap(mesNome(mes))}/${mes.slice(0, 4)}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>`;
-  const guardado = Fat.ultimo && Fat.ultimo.cartao === cartao && Fat.ultimo.mes === mes ? Fat.ultimo : null;
+  const cabec = () => `<div class="dlg-head"><h2>${csv ? 'Análise prévia' : 'Conferir fatura'} · ${esc(cartao)} · ${cap(mesNome(mesAtual))}/${mesAtual.slice(0, 4)}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>`;
+  let cab = cabec();
+  const guardado = Fat.ultimo && Fat.ultimo.cartao === cartao && Fat.ultimo.mes === mes && !!Fat.ultimo.csv === csv ? Fat.ultimo : null;
+
+  /* ----- entrada por CSV ----- */
+  const pedirCSV = () => {
+    d.innerHTML = `<form method="dialog">${cab}
+      <div class="dlg-body">
+        <p class="full small muted" style="margin:0">Escolha o <b>.csv</b> do ${esc(cartao)} — o extrato do cartão, mesmo com a fatura ainda aberta. Ele é lido aqui no seu aparelho e não sai dele. A Caderneta descobre sozinha em qual fatura cai cada compra, pelo dia de fechamento do cartão.</p>
+        <label class="btn primary full" style="justify-content:center">Escolher o arquivo .csv<input type="file" accept=".csv,text/csv,text/plain" id="fat-csv" hidden></label>
+        <div class="full" id="fat-msg"></div>
+      </div><div class="dlg-foot"><button class="btn" value="x" formnovalidate>Fechar</button></div></form>`;
+    $('#fat-csv').onchange = async (e) => {
+      const arq = e.target.files[0]; if (!arq) return;
+      $('#fat-msg').innerHTML = '<p class="small muted">Lendo o arquivo…</p>';
+      try { usarCSV(await lerTexto(arq)); }
+      catch (err) { console.error(err); $('#fat-msg').innerHTML = `<div class="notice">${esc(err.message || 'Não consegui ler esse arquivo.')}</div>`; }
+    };
+  };
+  /* alguns bancos exportam em ISO-8859-1; tenta UTF-8 e cai para latin1 se vier lixo */
+  const lerTexto = async (arq) => {
+    const buf = await arq.arrayBuffer();
+    const t = new TextDecoder('utf-8').decode(buf);
+    return /\uFFFD/.test(t) ? new TextDecoder('iso-8859-1').decode(buf) : t;
+  };
+  const usarCSV = (txt, mapa) => {
+    const r = Fat.lerCSV(txt, mapa, cartao);
+    if (r.erro === 'colunas') { escolherColunas(txt, r); return; }
+    if (r.erro) { $('#fat-msg').innerHTML = `<div class="notice">${esc(r.erro)}</div>`; return; }
+    const { porMes, usarK, parciais } = Fat.porFatura(r.compras, cartao);
+    if (!porMes.size) { $('#fat-msg').innerHTML = '<div class="notice">Nenhuma compra reconhecida no arquivo.</div>'; return; }
+    const meses = [...porMes.keys()].sort();
+    mesAtual = meses.includes(mes) ? mes : meses[meses.length - 1];
+    Fat.ultimo = { cartao, mes, banco: /nubank/i.test(cartao) ? 'Nubank' : 'Inter', csv: { porMes, meses, parciais, usarK, de: r.de, ate: r.ate, dias: r.dias, nLinhas: r.compras.length + r.outros.length }, outros: r.outros, compras: r.compras };
+    mostrar();
+  };
+  /* o cabeçalho não foi reconhecido: o usuário aponta as colunas */
+  const escolherColunas = (txt, r) => {
+    const amostra = r.tab.slice(0, 6);
+    const nCol = Math.max(...amostra.map(l => l.length));
+    const sel = (id, rot) => `<label class="field">${rot}<select id="${id}">${Array.from({ length: nCol }, (_, i) => `<option value="${i}">Coluna ${i + 1}${amostra[0] && amostra[0][i] ? ' · ' + esc(String(amostra[0][i]).slice(0, 18)) : ''}</option>`).join('')}</select></label>`;
+    d.innerHTML = `<form method="dialog">${cab}
+      <div class="dlg-body">
+        <p class="full small muted" style="margin:0">Não reconheci o cabeçalho desse arquivo. Veja as primeiras linhas e diga qual coluna é qual.</p>
+        <div class="full tbl-wrap" style="max-height:200px"><table><tbody>${amostra.map(l => `<tr>${Array.from({ length: nCol }, (_, i) => `<td class="small">${esc(String(l[i] ?? '').slice(0, 30))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+        <label class="field">Primeira linha de dados<select id="c-cab">${amostra.map((_, i) => `<option value="${i}">Depois da linha ${i + 1}</option>`).join('')}</select></label>
+        ${sel('c-data', 'Data')}${sel('c-desc', 'Descrição')}${sel('c-valor', 'Valor')}
+        <div class="full" id="fat-msg"></div>
+      </div><div class="dlg-foot"><button class="btn" value="x" formnovalidate>Fechar</button><div class="spacer"></div><button class="btn primary" type="button" id="c-ok">Analisar</button></div></form>`;
+    $('#c-ok').onclick = () => usarCSV(txt, { cab: +$('#c-cab').value, data: +$('#c-data').value, desc: +$('#c-desc').value, valor: +$('#c-valor').value });
+  };
 
   const pedir = () => {
     d.innerHTML = `<form method="dialog">${cab}
@@ -1935,7 +2138,10 @@ function dlgConferencia(cartao, mes) {
 
   const mostrar = () => {
     const F = Fat.ultimo;
-    const r = Fat.conferir(F.banco, F.compras, cartao, mes, F.outros);
+    cab = cabec();
+    const compras = F.csv ? (F.csv.porMes.get(mesAtual) || []) : F.compras;
+    const janela = F.csv ? { de: F.csv.de, ate: F.csv.ate, parcial: F.csv.parciais.has(mesAtual) } : null;
+    const r = Fat.conferir(F.banco, compras, cartao, mesAtual, F.outros, janela);
     const linha = (dv, i) => {
       const P = dv.p, A = dv.a;
       const umSo = A && A.itens.length === 1;
@@ -1964,7 +2170,7 @@ function dlgConferencia(cartao, mes) {
       }
       const titulo = (P ? (P.texto || P.estab || P.desc) : A.desc) + (A && A.juntos ? ` (${A.juntos} lançamentos)` : '');
       const ambos = P && A && Fat.norm(P.desc) !== Fat.norm(A.desc)
-        ? `<br><span class="small muted">fatura: ${esc(P.desc)}<br>Caderneta: ${esc(A.desc)}</span>` : '';
+        ? `<br><span class="small muted">arquivo: ${esc(P.desc)}<br>Caderneta: ${esc(A.desc)}</span>` : '';
       return `<tr><td><span class="stamp ${cor}">${rotulo}</span></td>
         <td class="wrap"><b>${esc(titulo || '—')}</b>${quem ? ` <span class="muted small">${esc(quem)}</span>` : ''}${ambos}</td>
         <td class="wrap small">${desc}${dv.mudaFatura ? ' <span class="chip warn">muda o mês da fatura</span>' : ''}</td><td><div class="row-actions">${acoes}</div></td></tr>`;
@@ -1974,10 +2180,15 @@ function dlgConferencia(cartao, mes) {
       <div class="dlg-body">
         <div class="full ledger-head" style="margin-bottom:0">
           <div class="big"><div class="lbl">Divergências</div><div class="val" style="${r.div.length ? '' : 'color:var(--paid)'}">${r.div.length}</div><div class="hint">${r.conferem} lançamento(s) conferem</div></div>
-          <div><div class="lbl">Total da fatura</div><div class="val">${brl(r.totalPdf)}</div><div class="hint">${r.nPdf} linhas no PDF</div></div>
+          <div><div class="lbl">Total da fatura</div><div class="val">${brl(r.totalPdf)}</div><div class="hint">${r.nPdf} ${F.csv ? 'linhas no arquivo' : 'linhas no PDF'}</div></div>
           <div><div class="lbl">Total na Caderneta</div><div class="val">${brl(r.totalApp)}</div><div class="hint">${r.nApp} lançamentos</div></div>
           <div><div class="lbl">Diferença</div><div class="val ${Math.abs(difTotal) > 0.02 ? 'owed' : 'paid'}">${brl(difTotal)}</div><div class="hint">fatura − Caderneta</div></div>
         </div>
+        ${F.csv ? `<div class="full" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="small muted">Faturas encontradas no arquivo:</span>
+          <div class="seg">${F.csv.meses.map(m => `<button type="button" data-act="fat-mes" data-v="${m}" aria-pressed="${m === mesAtual}">${mesCurto(m)}/${m.slice(2, 4)} <span class="muted">(${F.csv.porMes.get(m).length}${F.csv.parciais.has(m) ? ' parcial' : ''})</span></button>`).join('')}</div>
+          <span class="small muted">${F.csv.nLinhas} linhas · de ${dataBR(F.csv.de)} a ${dataBR(F.csv.ate)}${F.csv.usarK ? ' · parceladas contadas a partir da compra original' : ''}</span></div>
+          <div class="full small muted" style="margin:0">A fatura de ${cap(mesNome(mesAtual))} ${mesAtual >= Core.todayISO().slice(0, 7) ? 'ainda está aberta' : 'já fechou'}; a comparação usa só os lançamentos da Caderneta com compra até ${dataBR(F.csv.ate)}.${F.csv.parciais.has(mesAtual) ? ' <b>O arquivo cobre pouca coisa desse mês</b>, então aqui só aponto o que está no arquivo e falta na Caderneta.' : ''}</div>` : ''}
         ${r.dicaDia ? `<div class="full notice">${Math.abs(r.dicaDia)} dia(s) de diferença em ${r.div.filter(d => d.tipo === 'data').length} lançamentos, todos para o mesmo lado. Se isso se repetir todo mês, confira o dia de fechamento do ${esc(cartao)} em Ajustes.</div>` : ''}
         ${r.div.length ? `<div class="full tbl-wrap"><table><thead><tr><th>Situação</th><th>Lançamento</th><th>Detalhe</th><th></th></tr></thead>
           <tbody>${r.div.map(linha).join('')}</tbody></table></div>` : '<div class="full card small">Tudo conferido: cada linha da fatura tem o lançamento correspondente, com o mesmo valor e a mesma data.</div>'}
@@ -1994,8 +2205,10 @@ function dlgConferencia(cartao, mes) {
     Fat.divs = r.div;
   };
 
-  Fat.reabrir = () => dlgConferencia(cartao, mes);
-  if (guardado) mostrar(); else pedir();
+  Fat.reabrir = () => dlgConferencia(cartao, mes, modo);
+  Fat.trocarMes = (m) => { mesAtual = m; mostrar(); };
+  Fat.trocarArquivo = () => { Fat.ultimo = null; csv ? pedirCSV() : pedir(); };
+  if (guardado) mostrar(); else if (csv) pedirCSV(); else pedir();
   d.showModal();
   if (guardado) return;
 }
@@ -2161,10 +2374,12 @@ async function gerarImagemExtrato(nome, mes) {
     let parcela = '';
     if (it.n > 1) { parcela = `  ${it.k}/${it.n}`; }
     ctx.font = ff(500, 19, manrope);
-    const espaco = larg - 58 - wv - 16 - ctx.measureText(parcela).width;
+    const wp = parcela ? ctx.measureText(parcela).width : 0;
+    const espaco = larg - 58 - wv - 18 - wp;
     const d = cortar(ctx, it.desc || '—', espaco);
     ctx.fillStyle = IMG.ink; ctx.fillText(d, x + 58, yy);
-    if (parcela) { ctx.fillStyle = IMG.ink3; ctx.font = ff(600, 16, manrope); ctx.fillText(parcela, x + 58 + ctx.measureText(d).width + 6, yy); }
+    const wd = ctx.measureText(d).width;   // medir ainda com a fonte da descrição
+    if (parcela) { ctx.fillStyle = IMG.ink3; ctx.font = ff(600, 16, manrope); ctx.fillText(parcela, x + 58 + wd + 4, yy); }
   };
   y += 34;
   D.parc.forEach((it, i) => {
@@ -2255,6 +2470,168 @@ async function dlgImagem(nome, mes) {
     try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]); toast('Imagem copiada'); }
     catch (e) { toast('Este navegador não deixa copiar imagem; use Baixar PNG'); }
   }, 'image/png');
+}
+
+</script>
+<script>
+/* ===== Extrato para os devedores =====
+   Para cada pessoa, um arquivo próprio no seu Drive, com os dados só dela, liberado
+   para a conta Google dela. A Caderneta em si nunca é compartilhada. */
+
+const ARQ_EXTRATO = n => `caderneta-extrato-${n.replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '-')}.json`;
+
+function hashTexto(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+const Share = {
+  cfg() { return S.cfg.share ??= {}; },
+  de(nome) { return this.cfg()[nome] || null; },
+
+  /* só os dados daquela pessoa, já somados por mês de fatura */
+  extrato(nome) {
+    const meses = new Set();
+    for (const [m, arr] of S.idx) if (arr.some(i => i.c.d === nome)) meses.add(m);
+    for (const p of S.pags) if (p.d === nome) meses.add(p.f);
+    const lista = [...meses].sort();
+    const dados = {};
+    for (const m of lista) {
+      const parc = (S.idx.get(m) || []).filter(i => i.c.d === nome)
+        .sort((a, b) => a.c.dt.localeCompare(b.c.dt) || a.c.c.localeCompare(b.c.c, 'pt-BR'))
+        .map(i => ({ dt: i.c.dt, c: i.c.c, k: i.k, n: i.c.n, v: Core.r2(i.v), venc: i.venc }));
+      const pg = S.pags.filter(p => p.d === nome && p.f === m)
+        .sort((a, b) => a.dt.localeCompare(b.dt)).map(p => ({ dt: p.dt, m: p.m, v: Core.r2(p.v) }));
+      const total = Core.r2(parc.reduce((s, x) => s + x.v, 0));
+      const pago = Core.r2(pg.reduce((s, x) => s + x.v, 0));
+      dados[m] = { parc, pg, total, pago, falta: Core.r2(total - pago), obs: obsDe(nome, m) };
+    }
+    return { app: 'caderneta-extrato', versao: 1, nome, de: S.cfg.eu, gerado: new Date().toISOString(), meses: lista, dados };
+  },
+
+  /* assinatura do conteúdo, sem o carimbo de hora — é o que diz se mudou algo */
+  assinatura(nome) { const e = this.extrato(nome); delete e.gerado; return hashTexto(JSON.stringify(e)); },
+
+  /* publica (cria ou atualiza) e garante o acesso da conta informada */
+  async publicar(nome, email) {
+    const C = this.cfg();
+    const reg = C[nome] || (C[nome] = {});
+    const novoEmail = (email ?? reg.email ?? '').trim();
+    if (!novoEmail) throw new Error('Informe a conta Google da pessoa.');
+    const dados = this.extrato(nome);
+    const corpo = JSON.stringify(dados);
+
+    if (reg.id) {
+      const ok = await Cloud.gravarArquivo(reg.id, dados);
+      if (!ok) reg.id = null;                       // arquivo apagado no Drive: cria de novo
+    }
+    if (!reg.id) {
+      const m = await Cloud.criarArquivo(ARQ_EXTRATO(nome), dados);
+      reg.id = m.id; reg.permId = null;
+    }
+    if (reg.email !== novoEmail || !reg.permId) {
+      if (reg.permId && reg.email !== novoEmail) await Cloud.tirarAcesso(reg.id, reg.permId);
+      const perm = await Cloud.darAcesso(reg.id, novoEmail);
+      reg.permId = perm.id; reg.email = novoEmail;
+    }
+    reg.em = new Date().toISOString();
+    reg.hash = this.assinatura(nome);
+    Store.mark('cfg');
+    return reg;
+  },
+
+  async parar(nome) {
+    const reg = this.de(nome); if (!reg) return;
+    if (reg.id && reg.permId) await Cloud.tirarAcesso(reg.id, reg.permId);
+    delete this.cfg()[nome];
+    Store.mark('cfg');
+  },
+
+  /* republica sozinho quem mudou, no máximo de meia em meia hora */
+  ultimoAuto: 0,
+  async atualizarMudados() {
+    if (Store.mode !== 'drive' || Store.precisaClique) return 0;
+    if (Date.now() - this.ultimoAuto < 30 * 60000) return 0;
+    this.ultimoAuto = Date.now();
+    let n = 0;
+    for (const nome of Object.keys(this.cfg())) {
+      const reg = this.cfg()[nome];
+      if (!reg.id || !reg.email || reg.auto === false) continue;
+      if (this.assinatura(nome) === reg.hash) continue;
+      try { await this.publicar(nome); n++; } catch (e) { console.warn('extrato de ' + nome, e); }
+    }
+    return n;
+  },
+};
+
+Share.desatualizado = function (nome) {
+  const reg = this.de(nome);
+  if (!reg || !reg.id || !reg.hash) return false;
+  return this.assinatura(nome) !== reg.hash;
+};
+
+function vCompartilhar() {
+  const C = Share.cfg();
+  const devs = devsTodos().filter(n => n !== S.cfg.eu);
+  const linhas = devs.map(n => {
+    const reg = C[n];
+    const pub = reg && reg.id;
+    const velho = pub && Share.desatualizado(n);
+    return `<tr>
+      <td><b>${esc(n)}</b></td>
+      <td><input data-share-email="${esc(n)}" type="email" inputmode="email" autocomplete="off" spellcheck="false"
+        placeholder="conta@gmail.com" value="${esc(reg && reg.email || '')}" style="min-width:210px"></td>
+      <td class="small">${pub ? (velho ? '<span class="chip warn">desatualizado</span>' : `<span class="chip">em dia</span>`) + `<br><span class="muted">${quandoTxt(new Date(reg.em))}</span>` : '<span class="muted">não publicado</span>'}</td>
+      <td><div class="row-actions">
+        <button class="btn small ${velho || !pub ? 'primary' : ''}" data-act="share-pub" data-n="${esc(n)}">${pub ? 'Atualizar' : 'Publicar'}</button>
+        ${pub ? `<button class="btn link danger small" data-act="share-parar" data-n="${esc(n)}">Parar</button>` : ''}
+      </div></td></tr>`;
+  }).join('');
+  const nPub = devs.filter(n => C[n] && C[n].id).length;
+  return `<section class="sec"><div class="sec-head"><h2>Extrato para os devedores</h2>
+    <p>Cada pessoa recebe um arquivo só com os dados dela, liberado para a conta Google dela — ninguém vê a conta de outro, e a sua Caderneta não é compartilhada. Para ver, ela abre o app de extrato e entra com a conta Google.</p></div>
+    <div class="card" style="margin-bottom:10px"><dl class="kv">
+      <dt>Endereço do app de extrato<small>mande esse link para quem você publicar</small></dt>
+      <dd><code style="font-size:12px">${esc(location.origin + location.pathname.replace(/[^/]*$/, 'extrato.html'))}</code></dd>
+      <dt>Atualizar sozinho<small>republica quem teve mudança, no máximo a cada 30 minutos</small></dt>
+      <dd><input type="checkbox" data-bind="shareAuto" data-type="bool" ${S.cfg.shareAuto !== false ? 'checked' : ''} aria-label="Atualizar sozinho"></dd>
+    </dl></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Devedor</th><th>Conta Google</th><th>Situação</th><th></th></tr></thead>
+    <tbody>${linhas || '<tr><td colspan="4" class="empty">Nenhum devedor cadastrado.</td></tr>'}</tbody></table></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn" data-act="share-todos" ${nPub ? '' : 'disabled'}>Atualizar todos os ${nPub} publicados</button>
+      <span class="small muted" id="share-msg" style="align-self:center"></span></div>
+    <p class="small muted">Se a pessoa disser que a janela do Google não mostra o arquivo, peça para procurar por <b>caderneta-extrato</b> em “Compartilhados comigo”.</p>
+  </section>`;
+}
+
+async function acaoShare(act, nome) {
+  const msg = t => { const el = $('#share-msg'); if (el) el.textContent = t; };
+  if (act === 'share-pub') {
+    const campo = $(`[data-share-email="${CSS.escape(nome)}"]`);
+    const email = campo ? campo.value.trim() : '';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('Informe a conta Google dessa pessoa'); campo && campo.focus(); return; }
+    msg(`Publicando o extrato de ${nome}…`);
+    try { await Share.publicar(nome, email); render(); toast(`Extrato de ${nome} publicado`); }
+    catch (e) { console.error(e); msg(''); toast(e.message || 'Não consegui publicar'); }
+    return;
+  }
+  if (act === 'share-parar') {
+    if (!await confirmar(`Parar de compartilhar o extrato de ${nome}? Ela deixa de ver os lançamentos.`, 'Parar')) return;
+    try { await Share.parar(nome); render(); toast('Compartilhamento encerrado'); }
+    catch (e) { console.error(e); toast('Não consegui remover o acesso'); }
+    return;
+  }
+  if (act === 'share-todos') {
+    const nomes = Object.keys(Share.cfg()).filter(n => Share.cfg()[n].id && Share.cfg()[n].email);
+    let n = 0;
+    for (const x of nomes) {
+      msg(`Atualizando ${x} (${n + 1}/${nomes.length})…`);
+      try { await Share.publicar(x); n++; } catch (e) { console.error(e); }
+    }
+    render(); toast(`${n} extrato(s) atualizado(s)`);
+  }
 }
 
 </script>
@@ -2606,6 +2983,7 @@ async function posCarga() {
   const sem = Recorr.semear();
   const r = Recorr.sincronizar();
   if (sem + r.mudou) { reindex(); render(); Store.mark(); }
+  if (S.cfg.shareAuto !== false) { try { await Share.atualizarMudados(); } catch (e) { console.warn(e); } }
   const lim = await Limpeza.talvez();
   const fila = [];
   if (r.removidos.length) fila.push(() => avisoDuplicados(r.removidos));
@@ -2762,6 +3140,31 @@ const Cloud = {
     if (r.status === 404) { this.fileId = null; return this.enviar(dados, forcar); }
     if (!r.ok) throw new Error('Google Drive respondeu ' + r.status);
     const m = await r.json(); this.versao = m.version;
+  },
+
+  /* grava conteúdo num arquivo que já existe */
+  async gravarArquivo(id, dados) {
+    const r = await this.req(`${UP}/files/${id}?uploadType=media&fields=id`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados),
+    });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error('Google Drive respondeu ' + r.status);
+    return r.json();
+  },
+  /* dá acesso de leitura a uma conta Google */
+  async darAcesso(id, email) {
+    const r = await this.req(`${API}/files/${id}/permissions?sendNotificationEmail=false&fields=id`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'user', emailAddress: email }),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      throw new Error(/notFound|invalid/i.test(t) ? 'O Google não reconheceu esse e-mail como conta Google.' : 'Não consegui compartilhar (' + r.status + ')');
+    }
+    return r.json();
+  },
+  async tirarAcesso(id, permId) {
+    try { await this.req(`${API}/files/${id}/permissions/${permId}`, { method: 'DELETE' }); } catch (e) { console.warn(e); }
   },
 
   /* cria um arquivo separado (cópia da limpeza); não mexe no caderneta.json */
