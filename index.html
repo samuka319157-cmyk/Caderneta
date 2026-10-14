@@ -245,6 +245,21 @@ tr:hover .nota-bt.vazia,.nota-bt.vazia:focus-visible,.ledger-head .nota-bt.vazia
 .sync-bar.ok span{color:var(--paid)}
 @media (max-width:900px){.sync-btn .act-label{display:none}}
 .chk-filtro{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-weight:600;color:var(--ink-2)}
+/* fatura escolhida no lançamento */
+.fat-seg{display:flex;width:100%;margin-top:4px}
+.fat-seg button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 6px;line-height:1.15}
+.fat-seg button small{font-size:10.5px;font-weight:600;opacity:.75}
+#fat-wrap > span:first-child{display:block}
+.filtro-data{margin-top:-4px}
+.filtro-data label{display:inline-flex;align-items:center;gap:5px;font-weight:600;color:var(--ink-2)}
+.filtro-data input[type=date]{padding:5px 7px}
+/* Google no cabeçalho */
+.google-slot{display:contents}
+.google-btn{background:var(--warn-bg);color:var(--warn);border-color:currentColor;font-weight:700}
+.google-btn svg,.google-ok svg{width:17px;height:17px}
+.google-ok{position:relative;color:var(--ink-2)}
+.google-ok .dot-ok{position:absolute;left:21px;top:7px;width:8px;height:8px;border-radius:50%;background:var(--paid);box-shadow:0 0 0 2px var(--sheet)}
+@media (max-width:900px){.google-ok .act-label{display:none}.google-btn span{font-size:13px}}
 
 </style>
 </head>
@@ -293,8 +308,14 @@ const Core = (() => {
     return dateIn(addMonths(mesCompra, off), meio.v);
   }
 
-  function gerarParcelas(cfg, { meio, data, total, n, inicio = 1, primeira }) {
+  /* mês da fatura em que a 1ª parcela cairia pela regra do fechamento */
+  const faturaAuto = (cfg, meioNome, dataISO) => vencimento(cfg, meioNome, dataISO, 1).slice(0, 7);
+
+  /* `fatura` (AAAA-MM) fixa a fatura da 1ª parcela de um cartão, sem olhar o fechamento */
+  function gerarParcelas(cfg, { meio, data, total, n, inicio = 1, primeira, fatura }) {
     const out = [];
+    const md = meioDe(cfg, meio);
+    if (fatura && md && md.t === 'cartao') primeira = dateIn(addMonths(fatura, inicio - 1), md.v);
     const primeiraK = primeira ? primeira : null;
     for (let k = inicio; k <= n; k++) {
       let venc;
@@ -486,7 +507,7 @@ const Core = (() => {
     return { linhas, taxaE, taxaS };
   }
 
-  return { r2, pad, ym, addMonths, daysIn, dateIn, monthDiff, todayISO, meioDe, vencimento, gerarParcelas, indexar, resumo, saldoDevedor, dataCobranca, planejamento, apTabela };
+  return { r2, pad, ym, addMonths, daysIn, dateIn, monthDiff, todayISO, meioDe, vencimento, faturaAuto, gerarParcelas, indexar, resumo, saldoDevedor, dataCobranca, planejamento, apTabela };
 })();
 
 
@@ -524,6 +545,7 @@ const ICON = {
   left: '<path d="M15 18l-6-6 6-6"/>', right: '<path d="M9 18l6-6-6-6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
   cal: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/>',
+  nuvem: '<path d="M17.5 19H7a5 5 0 1 1 1.1-9.9A6 6 0 0 1 19.5 11 4 4 0 0 1 17.5 19z"/>',
   sync: '<path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.6-4.2"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.6 4.2"/><path d="M20 3v4.5h-4.5"/><path d="M4 21v-4.5h4.5"/>',
 };
 const ico = (n, t = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>${t}`;
@@ -544,7 +566,7 @@ const S = {
   cfg: null, compras: [], pags: [], idx: new Map(),
   view: 'resumo', mes: Core.todayISO().slice(0, 7),
   devSel: null, devModo: 'mes', soAberto: false,
-  lf: { q: '', d: '', m: '', st: 'aberto', parc: false, lim: 80 },
+  lf: { q: '', d: '', m: '', st: 'aberto', parc: false, de: '', ate: '', lim: 80 },
   pf: { d: '', per: 'mes', q: '' },
   ready: false,
 };
@@ -660,6 +682,7 @@ function shell() {
         <button class="icon-btn" data-act="mes-hoje" aria-label="Voltar ao mês atual" title="Mês atual">${ico('cal')}</button>
       </div>
       <div class="spacer"></div>
+      <span id="google-slot" class="google-slot"></span>
       <button class="btn sync-btn" id="btn-sync" data-act="sync" title="Baixar o que mudou em outro aparelho e enviar o daqui">${ico('sync')}<span class="act-label">Atualizar</span></button>
       <button class="btn" data-act="novo-pag">${ico('plus')}<span class="act-label">Pagamento</span></button>
       <button class="btn primary" data-act="nova-compra">${ico('plus')}<span class="act-label">Compra</span></button>
@@ -866,10 +889,12 @@ function textoCobranca() {
 /* ===== Lançamentos ===== */
 function vLancamentos() {
   const f = S.lf; const q = f.q.trim().toLowerCase();
-  let cs = S.compras.filter(c => (!f.d || c.d === f.d) && (!f.m || c.m === f.m) && (!q || c.c.toLowerCase().includes(q)));
-  // cobranças mensais: só as do mês selecionado, a menos que esteja buscando por nome
-  const nRecOcultas = q ? 0 : cs.filter(c => c.rec && Recorr.mesDe(c) !== S.mes).length;
-  if (!q) cs = cs.filter(c => !c.rec || Recorr.mesDe(c) === S.mes);
+  const porData = !!(f.de || f.ate);
+  let cs = S.compras.filter(c => (!f.d || c.d === f.d) && (!f.m || c.m === f.m) && (!q || c.c.toLowerCase().includes(q))
+    && (!f.de || c.dt >= f.de) && (!f.ate || c.dt <= f.ate));
+  // cobranças mensais: só as do mês selecionado, a menos que esteja buscando por nome ou por data
+  const nRecOcultas = q || porData ? 0 : cs.filter(c => c.rec && Recorr.mesDe(c) !== S.mes).length;
+  if (!q && !porData) cs = cs.filter(c => !c.rec || Recorr.mesDe(c) === S.mes);
   const ultimo = c => c.p.length ? c.p[c.p.length - 1][2].slice(0, 7) : '';
   if (f.st === 'aberto') cs = cs.filter(c => ultimo(c) >= S.mes);
   if (f.st === 'mes') cs = cs.filter(c => c.p.some(p => p[2].slice(0, 7) === S.mes));
@@ -885,7 +910,7 @@ function vLancamentos() {
     const pagas = prox ? prox[0] - 1 : c.n;
     return `<div class="item click" data-compra="${c.i}" role="button" tabindex="0">
       <div style="min-width:0"><div class="t">${esc(c.c) || '<span class="muted">(sem descrição)</span>'}${c.rec ? ' <span class="chip">mensal</span>' : ''}</div>
-      <div class="meta"><b style="color:var(--ink-2)">${esc(c.d)}</b> · <span class="dot" style="background:${meioCor(c.m)}"></span>${esc(c.m)} · ${dataBR(c.dt)} · parcelas ${faixa} de ${c.n}</div></div>
+      <div class="meta"><b style="color:var(--ink-2)">${esc(c.d)}</b> · <span class="dot" style="background:${meioCor(c.m)}"></span>${esc(c.m)} · ${dataBR(c.dt)} · parcelas ${faixa} de ${c.n}${c.f1 ? ` · <span class="chip" title="Fatura escolhida no lançamento">fatura ${mesCurto(c.f1)}</span>` : ''}</div></div>
       <div class="amt">${brl(c.v)}<div class="meta">${prox ? `próx. ${dataBR(prox[2])} · ${brl(prox[1])}` : 'quitada'}</div></div>
       <div class="prog"><i style="width:${c.n ? pagas / c.n * 100 : 100}%"></i></div></div>`;
   }).join('');
@@ -899,7 +924,14 @@ function vLancamentos() {
       <div class="seg">${[['aberto', 'Em aberto'], ['mes', 'Neste mês'], ['quitado', 'Quitadas'], ['todas', 'Todas']].map(([k, t]) => `<button data-act="lf-st" data-v="${k}" aria-pressed="${f.st === k}">${t}</button>`).join('')}</div>
       <label class="small chk-filtro"><input type="checkbox" data-act="lf-parc" ${f.parc ? 'checked' : ''}> Só parceladas</label>
     </div>
-    <p class="small muted" style="margin:0 0 8px">${cs.length} ${f.parc ? 'compras parceladas' : 'compras'} · a pagar de ${mesCurto(S.mes)} em diante: <b style="color:var(--ink)">${brl(total)}</b>${nRecOcultas ? ` · cobranças mensais de outros meses ocultas (busque pelo nome para ver)` : ''}</p>
+    <div class="filters filtro-data">
+      <span class="small" style="font-weight:600;color:var(--ink-2)">Data da compra</span>
+      <label class="small">de <input type="date" data-lf="de" value="${f.de}" max="${f.ate || ''}" aria-label="Compras a partir de"></label>
+      <label class="small">até <input type="date" data-lf="ate" value="${f.ate}" min="${f.de || ''}" aria-label="Compras até"></label>
+      <div class="seg">${[['hoje', 'Hoje'], ['7', '7 dias'], ['mes', 'Este mês'], ['ant', 'Mês passado']].map(([k, t]) => `<button data-act="lf-per" data-v="${k}">${t}</button>`).join('')}</div>
+      ${porData ? `<button class="btn link small" data-act="lf-per" data-v="">Limpar datas</button>` : ''}
+    </div>
+    <p class="small muted" style="margin:0 0 8px">${cs.length} ${f.parc ? 'compras parceladas' : 'compras'}${porData ? ` feitas ${f.de && f.ate ? (f.de === f.ate ? `em ${dataBR(f.de)}` : `de ${dataBR(f.de)} a ${dataBR(f.ate)}`) : f.de ? `a partir de ${dataBR(f.de)}` : `até ${dataBR(f.ate)}`}${f.st !== 'todas' ? ` <span class="muted">(filtro “${{ aberto: 'Em aberto', mes: 'Neste mês', quitado: 'Quitadas' }[f.st]}” ativo)</span>` : ''}` : ''} · a pagar de ${mesCurto(S.mes)} em diante: <b style="color:var(--ink)">${brl(total)}</b>${nRecOcultas ? ` · cobranças mensais de outros meses ocultas (busque pelo nome para ver)` : ''}</p>
     <div class="tbl-wrap lanc-list">${itens || '<div class="empty">Nenhuma compra encontrada.</div>'}</div>
     ${cs.length > f.lim ? `<p style="text-align:center"><button class="btn" data-act="lf-mais">Mostrar mais (${cs.length - f.lim})</button></p>` : ''}
   </section>`;
@@ -915,7 +947,7 @@ function vPagamentos() {
   const porDev = {};
   ps.forEach(p => porDev[p.d] = (porDev[p.d] || 0) + p.v);
   return `<section class="sec">
-    <div class="sec-head"><h2>Pagamentos recebidos</h2><p>Cada pagamento abate a fatura do mês indicado.</p></div>
+    <div class="sec-head"><h2>Pagamentos recebidos</h2><p>Cada pagamento abate a fatura do mês indicado.</p><div class="spacer"></div><button class="btn small" data-act="colar-pag">${ico('copy', 'Colar pagamentos')}</button></div>
     <div class="filters">
       <select data-pf="d" aria-label="Devedor"><option value="">Todos os devedores</option>${opt}</select>
       <div class="seg">${[['mes', `Fatura de ${mesCurto(S.mes)}`], ['todos', 'Todos']].map(([k, t]) => `<button data-act="pf-per" data-v="${k}" aria-pressed="${f.per === k}">${t}</button>`).join('')}</div>
@@ -1218,11 +1250,18 @@ function dataDoTexto(v) {
   if (m) { const y = m[3] ? (m[3].length === 2 ? '20' + m[3] : m[3]) : Core.todayISO().slice(0, 4); return `${y}-${Core.pad(+m[2])}-${Core.pad(+m[1])}`; }
   return null;
 }
-function parseLote(txt) {
+function mesDoTexto(v) {
+  const s = String(v ?? '').trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})$/); if (m) return `${m[1]}-${Core.pad(+m[2])}`;
+  m = s.match(/^(\d{1,2})[\/.-](\d{2}|\d{4})$/); if (m) return `${m[2].length === 2 ? '20' + m[2] : m[2]}-${Core.pad(+m[1])}`;
+  return '';
+}
+function parseLote(txt, modo) {
   let s = String(txt || '').trim().replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim();
   if (!s) return { erro: 'Cole o bloco que o Claude gerou.' };
   let j; try { j = JSON.parse(s); } catch (e) { return { erro: 'Não consegui ler o texto. Ele precisa ser o bloco em JSON gerado pelo Claude.' }; }
-  if (Array.isArray(j)) j = { compras: j };
+  if (Array.isArray(j)) j = modo === 'pags' ? { pags: j } : { compras: j };
+  else if (j && !j.compras && !j.lancamentos && !j.pags && !j.pagamentos && (j.v ?? j.valor) != null) j = modo === 'pags' ? { pags: [j] } : { compras: [j] };
   if (!j || typeof j !== 'object') return { erro: 'Formato não reconhecido.' };
   const nomes = devsTodos(), meios = S.cfg.meios.map(m => m.n);
   const padraoMeio = acharNome(meios, 'Inter') || (S.cfg.meios.find(m => m.t === 'cartao') || S.cfg.meios[0] || {}).n;
@@ -1242,15 +1281,20 @@ function parseLote(txt) {
     if (!meio) erros.push(`meio “${meioBruto}” não existe`);
     if (!dt) erros.push('data inválida');
     if (!isFinite(v) || !v) erros.push('valor inválido');
-    compras.push({ devs, descr, meio, dt, v, n, erros, prim: o.primeira ?? o.venc ?? null });
+    // fatura escolhida (AAAA-MM): no cartão fixa a fatura; no dinheiro vira a 1ª cobrança
+    const fatBruta = o.f ?? o.fatura;
+    const f1 = fatBruta != null && fatBruta !== '' ? mesDoTexto(fatBruta) : '';
+    if (fatBruta != null && fatBruta !== '' && !f1) erros.push(`fatura “${fatBruta}” inválida (use AAAA-MM)`);
+    let prim = o.primeira ?? o.venc ?? null, fat = null;
+    const md = meio && Core.meioDe(S.cfg, meio);
+    if (f1 && md) { if (md.t === 'cartao') fat = f1; else if (!prim) prim = Core.dateIn(f1, md.v || 15); }
+    compras.push({ devs, descr, meio, dt, v, n, erros, prim, fat });
   }
   for (const o of (j.pags || j.pagamentos || [])) {
     const dev = acharNome(nomes, o.d ?? o.devedor);
     const dt = dataDoTexto(o.dt ?? o.data);
     const v = parseNum(o.v ?? o.valor);
-    let f = String(o.f ?? o.fatura ?? '').trim();
-    if (/^\d{4}-\d{1,2}$/.test(f)) f = f.slice(0, 4) + '-' + Core.pad(+f.slice(5));
-    else f = dt ? dt.slice(0, 7) : '';
+    const f = mesDoTexto(o.f ?? o.fatura) || (dt ? dt.slice(0, 7) : '');
     const meio = String(o.m ?? o.meio ?? 'Pix').trim() || 'Pix';
     const erros = [];
     if (!dev) erros.push(`devedor “${o.d ?? o.devedor ?? ''}” não existe`);
@@ -1261,31 +1305,47 @@ function parseLote(txt) {
   if (!compras.length && !pags.length) return { erro: 'O bloco não trouxe nenhuma compra nem pagamento.' };
   return { compras, pags };
 }
-function dlgColar() {
+function dlgColar(modo) {
+  const soPags = modo === 'pags';
   const d = $('#dlg'); d.className = 'wide';
+  const exemplo = soPags
+    ? '{"app":"caderneta-lote","pags":[{"d":"Beto","v":1000,"dt":"20/09/2026","f":"2026-09","m":"Pix"}]}'
+    : '{"app":"caderneta-lote","compras":[{"d":"Lidia","m":"Inter","c":"Farmácia","dt":"22/09/2026","v":150,"n":3}]}';
   d.innerHTML = `<form method="dialog" id="f-colar">
-    <div class="dlg-head"><h2>Colar lançamentos</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
+    <div class="dlg-head"><h2>${soPags ? 'Colar pagamentos' : 'Colar lançamentos'}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
     <div class="dlg-body">
-      <p class="full small muted" style="margin:0">Peça as compras ao Claude, copie o bloco que ele devolver e cole aqui. A prévia mostra o que será lançado.</p>
-      <textarea class="full" id="lote" rows="7" placeholder='{"app":"caderneta-lote","compras":[{"d":"Lidia","m":"Inter","c":"Farmácia","dt":"22/09/2026","v":150,"n":3}]}' style="width:100%;border:1px solid var(--rule);border-radius:6px;padding:8px;background:var(--sheet-2);font-family:ui-monospace,monospace;font-size:13px"></textarea>
+      <p class="full small muted" style="margin:0">${soPags
+        ? 'Cole o bloco JSON com os pagamentos recebidos (ou abra um arquivo .json). Cada pagamento abate a fatura indicada em <code>f</code> (AAAA-MM); sem ela, vale o mês da data. A prévia mostra o que será lançado.'
+        : 'Peça as compras ao Claude, copie o bloco que ele devolver e cole aqui (ou abra um arquivo .json). A prévia mostra o que será lançado.'}</p>
+      <textarea class="full" id="lote" rows="7" placeholder='${exemplo}' style="width:100%;border:1px solid var(--rule);border-radius:6px;padding:8px;background:var(--sheet-2);font-family:ui-monospace,monospace;font-size:13px"></textarea>
       <div class="full" id="lote-prev"></div>
     </div>
-    <div class="dlg-foot"><button class="btn" type="button" id="lote-colar">Colar da área de transferência</button><div class="spacer"></div>
+    <div class="dlg-foot"><button class="btn" type="button" id="lote-colar">Colar da área de transferência</button>
+      <label class="btn" style="cursor:pointer">Abrir .json<input type="file" id="lote-arq" accept=".json,application/json,text/plain" hidden></label><div class="spacer"></div>
       <button class="btn" value="x" formnovalidate>Cancelar</button><button class="btn primary" value="ok" id="lote-ok" disabled>Lançar</button></div></form>`;
   const f = $('#f-colar'); let lote = null;
+  const parcelas = (c, total) => Core.gerarParcelas(S.cfg, { meio: c.meio, data: c.dt, total, n: c.n, primeira: c.prim, fatura: c.fat });
   const prev = () => {
-    lote = parseLote($('#lote').value);
+    lote = parseLote($('#lote').value, modo);
     const el = $('#lote-prev'); const ok = $('#lote-ok');
     if (lote.erro) { el.innerHTML = $('#lote').value.trim() ? `<div class="notice">${esc(lote.erro)}</div>` : ''; ok.disabled = true; return; }
-    const bons = lote.compras.filter(c => !c.erros.length), bonsP = lote.pags.filter(p => !p.erros.length);
+    // pagamento igual (mesma pessoa, data e valor) já lançado não entra de novo
+    for (const p of lote.pags) if (!p.erros.length && S.pags.some(x => x.d === p.dev && x.dt === p.dt && Math.abs(x.v - p.v) < 0.005)) p.repetido = true;
+    const bons = lote.compras.filter(c => !c.erros.length), bonsP = lote.pags.filter(p => !p.erros.length && !p.repetido);
     const linhas = lote.compras.map(c => {
-      const venc = !c.erros.length ? Core.gerarParcelas(S.cfg, { meio: c.meio, data: c.dt, total: c.v, n: c.n, primeira: c.prim })[0][2] : null;
+      const venc = !c.erros.length ? parcelas(c, c.v)[0][2] : null;
       return `<tr class="${c.erros.length ? 'dim' : ''}"><td class="wrap">${esc(c.descr) || '—'}</td><td>${esc(c.devs.filter(Boolean).join(' + ')) || '—'}</td><td>${esc(c.meio || '—')}</td><td>${c.dt ? dataBR(c.dt) : '—'}</td><td class="n">${isFinite(c.v) ? brl(c.v) : '—'}</td><td class="n">${c.n}x</td>
-      <td class="small">${c.erros.length ? `<span class="owed">${esc(c.erros.join('; '))}</span>` : `1ª em ${dataBR(venc)}${c.devs.length > 1 ? ` · ${brl(c.v / c.devs.length)} cada` : ''}`}</td></tr>`;
+      <td class="small">${c.erros.length ? `<span class="owed">${esc(c.erros.join('; '))}</span>` : `1ª em ${dataBR(venc)}${c.fat ? ' <span class="chip">fatura escolhida</span>' : ''}${c.devs.length > 1 ? ` · ${brl(c.v / c.devs.length)} cada` : ''}`}</td></tr>`;
     }).join('');
-    const linhasP = lote.pags.map(p => `<tr class="${p.erros.length ? 'dim' : ''}"><td class="wrap">Pagamento</td><td>${esc(p.dev || '—')}</td><td>${esc(p.meio)}</td><td>${p.dt ? dataBR(p.dt) : '—'}</td><td class="n">${isFinite(p.v) ? brl(p.v) : '—'}</td><td class="n">fatura ${p.f ? mesCurto(p.f) : '—'}</td><td class="small">${p.erros.length ? `<span class="owed">${esc(p.erros.join('; '))}</span>` : 'abate a fatura'}</td></tr>`).join('');
-    el.innerHTML = `<div class="tbl-wrap" style="max-height:240px;overflow:auto"><table><thead><tr><th>Descrição</th><th>Devedor</th><th>Meio</th><th>Data</th><th class="n">Valor</th><th class="n">Parc.</th><th>Situação</th></tr></thead><tbody>${linhas}${linhasP}</tbody></table></div>
-      <p class="small muted" style="margin:8px 0 0">${bons.length} compra(s) e ${bonsP.length} pagamento(s) prontos${lote.compras.length - bons.length + lote.pags.length - bonsP.length ? ` · ${lote.compras.length - bons.length + lote.pags.length - bonsP.length} com problema serão ignorados` : ''}.</p>`;
+    const linhasP = lote.pags.map(p => {
+      const rep = p.repetido;
+      return `<tr class="${p.erros.length || rep ? 'dim' : ''}"><td class="wrap">Pagamento</td><td>${esc(p.dev || '—')}</td><td>${esc(p.meio)}</td><td>${p.dt ? dataBR(p.dt) : '—'}</td><td class="n">${isFinite(p.v) ? brl(p.v) : '—'}</td><td class="n">fatura ${p.f ? mesCurto(p.f) : '—'}</td><td class="small">${p.erros.length ? `<span class="owed">${esc(p.erros.join('; '))}</span>` : rep ? '<span class="chip warn">já lançado</span> não entra de novo' : 'abate a fatura'}</td></tr>`;
+    }).join('');
+    const nRep = lote.pags.filter(p => p.repetido).length;
+    const nProb = lote.compras.length - bons.length + lote.pags.length - bonsP.length - nRep;
+    const partes = [bons.length ? `${bons.length} compra(s)` : '', bonsP.length ? `${bonsP.length} pagamento(s)` : ''].filter(Boolean).join(' e ') || 'Nada';
+    el.innerHTML = `<div class="tbl-wrap" style="max-height:240px;overflow:auto"><table><thead><tr><th>Descrição</th><th>Devedor</th><th>Meio</th><th>Data</th><th class="n">Valor</th><th class="n">${lote.compras.length ? 'Parc.' : 'Fatura'}</th><th>Situação</th></tr></thead><tbody>${linhas}${linhasP}</tbody></table></div>
+      <p class="small muted" style="margin:8px 0 0">${partes} pronto(s) para lançar${nRep ? ` · ${nRep} já lançado(s), fica(m) de fora` : ''}${nProb ? ` · ${nProb} com problema ${nProb > 1 ? 'serão ignorados' : 'será ignorado'}` : ''}.</p>`;
     ok.disabled = !bons.length && !bonsP.length;
   };
   f.addEventListener('input', prev);
@@ -1293,6 +1353,12 @@ function dlgColar() {
     try { $('#lote').value = await navigator.clipboard.readText(); prev(); }
     catch (e) { toast('Cole com Ctrl+V na caixa'); $('#lote').focus(); }
   };
+  $('#lote-arq').addEventListener('change', async e => {
+    e.stopPropagation();
+    const arq = e.target.files[0]; if (!arq) return;
+    try { $('#lote').value = await arq.text(); prev(); } catch (err) { toast('Não consegui ler o arquivo'); }
+    e.target.value = '';
+  });
   f.addEventListener('submit', e => {
     if (e.submitter && e.submitter.value !== 'ok') return;
     if (!lote || lote.erro) { e.preventDefault(); return; }
@@ -1300,14 +1366,13 @@ function dlgColar() {
     for (const c of lote.compras.filter(x => !x.erros.length)) {
       const cada = c.v / c.devs.length;
       for (const dev of c.devs) {
-        S.compras.push({ i: uid('c'), d: dev, m: c.meio, c: c.descr, dt: c.dt, v: cada, n: c.n,
-          p: Core.gerarParcelas(S.cfg, { meio: c.meio, data: c.dt, total: cada, n: c.n, primeira: c.prim }) });
+        S.compras.push({ i: uid('c'), d: dev, m: c.meio, c: c.descr, dt: c.dt, v: cada, n: c.n, ...(c.fat ? { f1: c.fat } : {}), p: parcelas(c, cada) });
         nc++;
       }
     }
-    for (const p of lote.pags.filter(x => !x.erros.length)) { S.pags.push({ i: uid('p'), d: p.dev, m: p.meio, dt: p.dt, v: p.v, f: p.f }); np++; }
+    for (const p of lote.pags.filter(x => !x.erros.length && !x.repetido)) { S.pags.push({ i: uid('p'), d: p.dev, m: p.meio, dt: p.dt, v: p.v, f: p.f }); np++; }
     reindex(); Store.mark(); render();
-    toast(`${nc} lançamento(s)${np ? ` e ${np} pagamento(s)` : ''} adicionados`);
+    toast([nc ? `${nc} compra(s)` : '', np ? `${np} pagamento(s)` : ''].filter(Boolean).join(' e ') + ' adicionados');
   });
   d.showModal(); setTimeout(() => $('#lote').focus(), 30);
 }
@@ -1317,8 +1382,9 @@ function dlgCompra(id, pre = {}) {
   const c = id ? S.compras.find(x => x.i === id) : null;
   const d = $('#dlg'); d.className = '';
   const meios = S.cfg.meios;
-  const v = c ? { d: [c.d], m: c.m, c: c.c, dt: c.dt, total: c.v, n: c.n, ini: Math.min(...c.p.map(p => p[0])), prim: c.p[0] && c.p[0][2] }
-    : { d: pre.d ? [pre.d] : [], m: pre.m || meios[0].n, c: pre.c || '', dt: pre.dt || Core.todayISO(), total: pre.total ?? '', n: pre.n || 1, ini: pre.ini || 1, prim: '' };
+  const v = c ? { d: [c.d], m: c.m, c: c.c, dt: c.dt, total: c.v, n: c.n, ini: Math.min(...c.p.map(p => p[0])), prim: c.p[0] && c.p[0][2], f1: c.f1 || '' }
+    : { d: pre.d ? [pre.d] : [], m: pre.m || meios[0].n, c: pre.c || '', dt: pre.dt || Core.todayISO(), total: pre.total ?? '', n: pre.n || 1, ini: pre.ini || 1, prim: '', f1: pre.f1 || '' };
+  let fatSel = v.f1, fatChave = '';
   const devOpts = devsAtivos();
   if (c && !devOpts.includes(c.d)) devOpts.push(c.d);
   d.innerHTML = `<form method="dialog" id="f-compra">
@@ -1333,6 +1399,7 @@ function dlgCompra(id, pre = {}) {
       <label class="field">Valor total (R$)<input name="total" inputmode="decimal" value="${esc(numBR(v.total))}" required></label>
       <label class="field">Parcelas<input name="n" type="number" min="1" max="120" value="${v.n}" required></label>
       <label class="field">Começar da parcela<input name="ini" type="number" min="1" value="${v.ini}"><span class="muted" style="font-weight:400">para compras já em andamento</span></label>
+      <div class="field full" id="fat-wrap"><span>Fatura</span><div class="seg fat-seg" id="fat-seg" role="radiogroup" aria-label="Fatura da compra"></div><span class="muted" id="fat-dica" style="font-weight:400"></span></div>
       <label class="field" id="prim-wrap">Primeira cobrança<input type="date" name="prim" value="${c && Core.meioDe(S.cfg, c.m)?.t !== 'cartao' ? v.prim : ''}"><span class="muted" style="font-weight:400">vazio = regra automática</span></label>
       <div class="full"><div class="small" style="font-weight:600;color:var(--ink-2);margin-bottom:3px">Parcelas geradas</div><div class="preview" id="prev"></div></div>
     </div>
@@ -1346,13 +1413,40 @@ function dlgCompra(id, pre = {}) {
     const meio = fd.get('m'); const tipo = Core.meioDe(S.cfg, meio)?.t;
     return { devs, meio, tipo, c: String(fd.get('c')).trim(), dt: fd.get('dt'), total: parseNum(fd.get('total')), n: parseInt(fd.get('n')) || 1, ini: parseInt(fd.get('ini')) || 1, prim: fd.get('prim') || '' };
   };
+  /* fatura da 1ª parcela: a do fechamento ou a anterior/seguinte, à escolha */
+  const pintarFatura = x => {
+    const wrap = $('#fat-wrap');
+    if (x.tipo !== 'cartao' || !x.dt) { wrap.style.display = 'none'; return null; }
+    wrap.style.display = '';
+    const meio = Core.meioDe(S.cfg, x.meio);
+    const auto = Core.faturaAuto(S.cfg, x.meio, x.dt);
+    const ops = [-1, 0, 1].map(k => Core.addMonths(auto, k));
+    if (!ops.includes(fatSel)) fatSel = auto;
+    const chave = ops.join() + '|' + fatSel;
+    if (chave !== fatChave) {
+      fatChave = chave;
+      $('#fat-seg').innerHTML = ops.map(m => `<button type="button" role="radio" data-fat="${m}" aria-pressed="${m === fatSel}" aria-checked="${m === fatSel}">${cap(mesCurto(m))}${m === auto ? '<small>pelo fechamento</small>' : ''}</button>`).join('');
+    }
+    const dia = Number(x.dt.slice(8, 10));
+    $('#fat-dica').innerHTML = fatSel !== auto
+      ? `<b class="owed">Fatura escolhida à mão.</b> As parcelas seguem a partir dela.`
+      : dia === meio.f || dia === meio.f - 1
+        ? `Compra perto do fechamento (dia ${meio.f}). Se o banco jogou para outra fatura, escolha aqui.`
+        : `Fecha dia ${meio.f}. Escolha outra fatura só se o banco tiver lançado diferente.`;
+    return fatSel !== auto ? fatSel : null;
+  };
+  $('#fat-seg', f).addEventListener('click', e => {
+    const b = e.target.closest('[data-fat]'); if (!b) return;
+    fatSel = b.dataset.fat; prev();
+  });
   const prev = () => {
     const x = ler();
     $('#prim-wrap').style.display = x.tipo === 'cartao' ? 'none' : '';
+    pintarFatura(x);
     const el = $('#prev');
     if (!x.dt || !(x.total > 0 || x.total < 0) || x.ini > x.n) { el.innerHTML = '<span class="muted">Preencha data, valor e parcelas.</span>'; return; }
     const div = Math.max(1, x.devs.length || 1);
-    const ps = Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: x.total / div, n: x.n, inicio: x.ini, primeira: x.tipo === 'cartao' ? '' : x.prim });
+    const ps = Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: x.total / div, n: x.n, inicio: x.ini, primeira: x.tipo === 'cartao' ? '' : x.prim, fatura: pintarFatura(x) });
     el.innerHTML = (div > 1 ? `<div class="muted"><span>${div} pessoas × ${brl(x.total / div)}</span></div>` : '') + ps.map(p => `<div><span>${p[0]}/${x.n} · ${dataBR(p[2])}</span><b>${brl(p[1])}</b></div>`).join('');
   };
   f.addEventListener('input', prev); prev();
@@ -1363,15 +1457,17 @@ function dlgCompra(id, pre = {}) {
     if (!isFinite(x.total) || !x.total) { e.preventDefault(); toast('Valor inválido'); return; }
     if (x.ini > x.n) { e.preventDefault(); toast('A parcela inicial passa do total'); return; }
     const prim = x.tipo === 'cartao' ? '' : x.prim;
+    const f1 = pintarFatura(x);
     if (c) {
       const antigo = 'c-' + c.dt.slice(0, 7);
-      Object.assign(c, { d: fd1(f, 'dev'), m: x.meio, c: x.c, dt: x.dt, v: x.total, n: x.n, p: Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: x.total, n: x.n, inicio: x.ini, primeira: prim }) });
+      Object.assign(c, { d: fd1(f, 'dev'), m: x.meio, c: x.c, dt: x.dt, v: x.total, n: x.n, p: Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: x.total, n: x.n, inicio: x.ini, primeira: prim, fatura: f1 }) });
+      if (f1) c.f1 = f1; else delete c.f1;
       if (c.rec) c.man = true;
       Store.mark(antigo, 'c-' + c.dt.slice(0, 7));
       toast('Compra salva');
     } else {
       const each = x.total / x.devs.length;
-      for (const dv of x.devs) S.compras.push({ i: uid('c'), d: dv, m: x.meio, c: x.c, dt: x.dt, v: each, n: x.n, p: Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: each, n: x.n, inicio: x.ini, primeira: prim }) });
+      for (const dv of x.devs) S.compras.push({ i: uid('c'), d: dv, m: x.meio, c: x.c, dt: x.dt, v: each, n: x.n, ...(f1 ? { f1 } : {}), p: Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: each, n: x.n, inicio: x.ini, primeira: prim, fatura: f1 }) });
       Store.mark('c-' + x.dt.slice(0, 7));
       toast(x.devs.length > 1 ? `Lançada para ${x.devs.length} pessoas` : 'Compra lançada');
     }
@@ -1462,6 +1558,16 @@ document.addEventListener('click', async e => {
     case 'obs': dlgObs(t.dataset.n || S.devSel, t.dataset.m || S.mes); break;
     case 'lf-st': S.lf.st = t.dataset.v; S.lf.lim = 80; render(); break;
     case 'lf-parc': S.lf.parc = t.checked; S.lf.lim = 80; render(); break;
+    case 'lf-per': {
+      const h = Core.todayISO(), mh = h.slice(0, 7), v = t.dataset.v;
+      const ant = Core.addMonths(mh, -1);
+      const sete = new Date(); sete.setDate(sete.getDate() - 6);
+      const iso7 = `${sete.getFullYear()}-${Core.pad(sete.getMonth() + 1)}-${Core.pad(sete.getDate())}`;
+      [S.lf.de, S.lf.ate] = v === 'hoje' ? [h, h] : v === '7' ? [iso7, h] : v === 'mes' ? [mh + '-01', h]
+        : v === 'ant' ? [ant + '-01', Core.dateIn(ant, 31)] : ['', ''];
+      if (v) S.lf.st = 'todas';
+      S.lf.lim = 80; render(); break;
+    }
     case 'lf-mais': S.lf.lim += 120; render(); break;
     case 'pf-per': S.pf.per = t.dataset.v; render(); break;
     case 'plan-manual': { const it = S.cfg.plan.itens[+t.dataset.i]; const R = Core.planejamento(S.cfg, S.mes); it.mn = Core.r2(R.itens.find(x => x.id === it.id).calc); Store.mark('cfg'); render(); break; }
@@ -1494,6 +1600,7 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'colar': dlgColar(); break;
+    case 'colar-pag': dlgColar('pags'); break;
     case 'conferir': dlgConferencia(t.dataset.m, S.mes, t.dataset.modo); break;
     case 'fat-mes': Fat.trocarMes(t.dataset.v); break;
     case 'fat-outro': Fat.trocarArquivo(); break;
@@ -1595,6 +1702,10 @@ document.addEventListener('change', async e => {
       reindex(); Store.mark(...antigos); Store.markAll(); render(); toast('Backup importado'); posCarga();
     } catch (err) { toast('Arquivo inválido: use um backup exportado por aqui'); }
     t.value = '';
+  }
+  if (t.dataset.lf === 'de' || t.dataset.lf === 'ate') {
+    if (!S.lf.de && !S.lf.ate && t.value) S.lf.st = 'todas';   // filtrando por data, mostra quitadas também
+    S.lf[t.dataset.lf] = t.value; S.lf.lim = 80; render();
   }
   if (t.dataset.lf === 'd' || t.dataset.lf === 'm') { S.lf[t.dataset.lf] = t.value; S.lf.lim = 80; render(); }
   if (t.dataset.pf) { S.pf[t.dataset.pf] = t.value; render(); }
@@ -2202,7 +2313,7 @@ function dlgConferencia(cartao, mes, modo) {
           <div class="tbl-wrap" style="margin-top:8px"><table><tbody>${F.outros.map(o => `<tr><td>${dataBR(o.data)}</td><td class="wrap">${esc(o.desc)}</td><td class="n">${brl(o.valor)}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
       </div>
       <div class="dlg-foot"><button class="btn" type="button" data-act="fat-outro">Trocar arquivo</button><div class="spacer"></div><button class="btn primary" value="x">Fechar</button></div></form>`;
-    Fat.divs = r.div;
+    Fat.divs = r.div; Fat.mes = mesAtual;
   };
 
   Fat.reabrir = () => dlgConferencia(cartao, mes, modo);
@@ -2226,7 +2337,9 @@ async function acaoConferencia(act, i) {
     let dt = P.data;
     if (Fat.ultimo.banco === 'Nubank' && k > 1) dt = Core.dateIn(Core.addMonths(P.data.slice(0, 7), -(k - 1)), Number(P.data.slice(8, 10)));
     volta();
-    dlgCompra(null, { d: dev || '', m: Fat.ultimo.cartao, c: (P.texto || P.estab || P.desc).trim(), total, n, dt, ini: k });
+    // já entra na fatura em que o banco cobrou, mesmo que o fechamento dissesse outra
+    const f1 = Fat.mes ? Core.addMonths(Fat.mes, -(k - 1)) : '';
+    dlgCompra(null, { d: dev || '', m: Fat.ultimo.cartao, c: (P.texto || P.estab || P.desc).trim(), total, n, dt, ini: k, f1 });
     return;
   }
   if (act === 'fat-excluir') {
@@ -2241,7 +2354,7 @@ async function acaoConferencia(act, i) {
     const ini = Math.min(...c.p.map(x => x[0]));
     if (act === 'fat-valor') c.v = Core.r2(Math.abs(P.valor) * c.n);
     else c.dt = P.data;
-    c.p = Core.gerarParcelas(S.cfg, { meio: c.m, data: c.dt, total: c.v, n: c.n, inicio: ini });
+    c.p = Core.gerarParcelas(S.cfg, { meio: c.m, data: c.dt, total: c.v, n: c.n, inicio: ini, fatura: c.f1 });
     if (c.rec) c.man = true;
     reindex(); Store.mark(); render(); Fat.reabrir();
     toast(act === 'fat-valor' ? 'Valor ajustado' : 'Data ajustada');
@@ -3333,7 +3446,19 @@ function quandoTxt(d) {
   if (s < 3600) return `há ${Math.round(s / 60)} min`;
   return d.toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
 }
+/* botão do Google no cabeçalho, em todas as telas */
+function pintarGoogle() {
+  const slot = $('#google-slot'); if (!slot) return;
+  const desligado = Store.mode !== 'drive' || Store.precisaClique;
+  const chave = desligado ? (Store.precisaClique ? 'expirou' : 'local') : 'ok';
+  if (slot.dataset.k === chave) return;
+  slot.dataset.k = chave;
+  slot.innerHTML = desligado
+    ? `<button class="btn google-btn" data-act="conectar" title="${Store.precisaClique ? 'O acesso ao Google expirou. As alterações estão guardadas neste aparelho.' : 'Os dados estão só neste aparelho'}">${ico('nuvem')}<span>${Store.precisaClique ? 'Reconectar ao Google' : 'Conectar ao Google'}</span></button>`
+    : `<button class="btn google-ok" data-view="ajustes" title="Conectado ao Google Drive" aria-label="Conectado ao Google Drive">${ico('nuvem')}<i class="dot-ok"></i><span class="act-label">Google</span></button>`;
+}
 function status() {
+  pintarGoogle();
   const el = $('#save-state'); if (!el) return;
   el.classList.toggle('err', !!Store.err);
   if (Store.precisaClique) el.innerHTML = `Alterações guardadas aqui.<br><button class="btn link small" data-act="conectar">Reconectar ao Google Drive</button>`;
