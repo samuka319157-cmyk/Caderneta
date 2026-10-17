@@ -260,6 +260,16 @@ tr:hover .nota-bt.vazia,.nota-bt.vazia:focus-visible,.ledger-head .nota-bt.vazia
 .google-ok{position:relative;color:var(--ink-2)}
 .google-ok .dot-ok{position:absolute;left:21px;top:7px;width:8px;height:8px;border-radius:50%;background:var(--paid);box-shadow:0 0 0 2px var(--sheet)}
 @media (max-width:900px){.google-ok .act-label{display:none}.google-btn span{font-size:13px}}
+/* ajuda de custo */
+.ajuda-calc{margin-top:14px;padding-top:12px;border-top:1px dashed var(--rule)}
+.ajuda-ops{display:flex;flex-wrap:wrap;gap:6px}
+/* caixinhas */
+.cx-barra{height:6px;border-radius:3px;background:var(--sheet-2);overflow:hidden;margin-bottom:3px}
+.cx-barra i{display:block;height:100%;border-radius:3px}
+.chip.cat{background:transparent;border-style:dashed}
+.alerta-cx{background:var(--stamp);color:#fff;border-color:var(--stamp);font-weight:700}
+.alerta-cx svg{width:17px;height:17px}
+@media (max-width:900px){.alerta-cx{order:10;width:100%;justify-content:center}}
 
 </style>
 </head>
@@ -477,6 +487,53 @@ const Core = (() => {
       necessario, difSaldo: (P.saldoInf || 0) - necessario };
   }
 
+  /* ===== Ajuda de custo: do total recebido para os dias ===== */
+  function diasUteis(mes) {                       // segunda a sexta: o máximo possível no mês
+    let n = 0; const [y, m] = mes.split('-').map(Number);
+    for (let d = 1; d <= daysIn(mes); d++) { const w = new Date(y, m - 1, d).getDay(); if (w && w < 6) n++; }
+    return n;
+  }
+  /* todas as combinações de dias (transporte, alimentação) que dão exatamente o total */
+  function diasDaAjuda(total, tDia, aDia, max) {
+    const alvo = Math.round(total * 100), t = Math.round(tDia * 100), a = Math.round(aDia * 100);
+    const exatas = [];
+    let perto = null, pertoLonge = null;
+    const melhor = (p, x, y, dif) => !p || Math.abs(dif) < Math.abs(p.dif * 100) || (Math.abs(dif) === Math.abs(p.dif * 100) && Math.abs(x - y) < Math.abs(p.t - p.a));
+    for (let x = 0; x <= max; x++) for (let y = 0; y <= max; y++) {
+      const dif = alvo - (x * t + y * a);
+      if (dif === 0) { exatas.push({ t: x, a: y }); continue; }
+      // a mais próxima entre as combinações plausíveis (dias de transporte e alimentação parecidos)
+      if (Math.abs(x - y) <= 3) { if (melhor(perto, x, y, dif)) perto = { t: x, a: y, dif: dif / 100 }; }
+      else if (melhor(pertoLonge, x, y, dif)) pertoLonge = { t: x, a: y, dif: dif / 100 };
+    }
+    perto = perto || pertoLonge;
+    // os dois benefícios costumam andar juntos: combinações parecidas primeiro
+    exatas.sort((p, q) => Math.abs(p.t - p.a) - Math.abs(q.t - q.a) || q.t - p.t);
+    return { exatas, perto };
+  }
+
+  /* ===== Caixinhas como categorias dos gastos do próprio dono ===== */
+  function categorias(cfg, mes) {
+    const P = cfg.plan; if (!P) return [];
+    const fora = n => n === P.ap.cxES || n === P.ap.cxD || /parcela/i.test(n);
+    return planejamento(cfg, mes).caixinhas.filter(c => !fora(c.n)).map(c => ({ n: c.n, limite: c.v, tipo: c.tipo }));
+  }
+  function gastosPorCaixinha(cfg, compras, mes) {
+    const cats = categorias(cfg, mes);
+    const gasto = new Map();
+    for (const c of compras) if (c.d === cfg.eu && c.cat && c.dt.slice(0, 7) === mes) gasto.set(c.cat, (gasto.get(c.cat) || 0) + c.v);
+    const linhas = cats.map(c => ({ ...c, gasto: gasto.get(c.n) || 0 }));
+    for (const [n, v] of gasto) if (!cats.some(c => c.n === n)) linhas.push({ n, limite: 0, gasto: v, tipo: 'antiga' });
+    for (const l of linhas) { l.resta = l.limite - l.gasto; l.pct = l.limite > 0 ? l.gasto / l.limite : (l.gasto > 0 ? Infinity : 0); }
+    const semCat = compras.filter(c => c.d === cfg.eu && !c.cat && !c.rec && c.dt.slice(0, 7) === mes);
+    return { linhas, semCat };
+  }
+  /* caixinhas acima do ponto de alerta (padrão 85%) */
+  function alertasCaixinha(cfg, compras, mes) {
+    const lim = ((cfg.plan && cfg.plan.alertaPct) || 85) / 100;
+    return gastosPorCaixinha(cfg, compras, mes).linhas.filter(l => l.gasto > 0 && l.pct >= lim).sort((a, b) => b.pct - a.pct);
+  }
+
   function apTabela(A) {
     const meses = Object.keys(A.meses).sort();
     if (!meses.length) return { linhas: [], taxaE: 0, taxaS: 0 };
@@ -507,7 +564,7 @@ const Core = (() => {
     return { linhas, taxaE, taxaS };
   }
 
-  return { r2, pad, ym, addMonths, daysIn, dateIn, monthDiff, todayISO, meioDe, vencimento, faturaAuto, gerarParcelas, indexar, resumo, saldoDevedor, dataCobranca, planejamento, apTabela };
+  return { r2, pad, ym, addMonths, daysIn, dateIn, monthDiff, todayISO, meioDe, vencimento, faturaAuto, gerarParcelas, indexar, resumo, saldoDevedor, dataCobranca, planejamento, apTabela, diasUteis, diasDaAjuda, categorias, gastosPorCaixinha, alertasCaixinha };
 })();
 
 
@@ -545,6 +602,7 @@ const ICON = {
   left: '<path d="M15 18l-6-6 6-6"/>', right: '<path d="M9 18l6-6-6-6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
   cal: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/>',
+  alerta: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
   nuvem: '<path d="M17.5 19H7a5 5 0 1 1 1.1-9.9A6 6 0 0 1 19.5 11 4 4 0 0 1 17.5 19z"/>',
   sync: '<path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.6-4.2"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.6 4.2"/><path d="M20 3v4.5h-4.5"/><path d="M4 21v-4.5h4.5"/>',
 };
@@ -566,7 +624,7 @@ const S = {
   cfg: null, compras: [], pags: [], idx: new Map(),
   view: 'resumo', mes: Core.todayISO().slice(0, 7),
   devSel: null, devModo: 'mes', soAberto: false,
-  lf: { q: '', d: '', m: '', st: 'aberto', parc: false, de: '', ate: '', lim: 80 },
+  lf: { q: '', d: '', m: '', st: 'aberto', parc: false, de: '', ate: '', cat: '', lim: 80 },
   pf: { d: '', per: 'mes', q: '' },
   ready: false,
 };
@@ -682,6 +740,7 @@ function shell() {
         <button class="icon-btn" data-act="mes-hoje" aria-label="Voltar ao mês atual" title="Mês atual">${ico('cal')}</button>
       </div>
       <div class="spacer"></div>
+      <span id="alerta-cx" class="google-slot"></span>
       <span id="google-slot" class="google-slot"></span>
       <button class="btn sync-btn" id="btn-sync" data-act="sync" title="Baixar o que mudou em outro aparelho e enviar o daqui">${ico('sync')}<span class="act-label">Atualizar</span></button>
       <button class="btn" data-act="novo-pag">${ico('plus')}<span class="act-label">Pagamento</span></button>
@@ -702,8 +761,22 @@ function render() {
   $('#mes-titulo').innerHTML = `${cap(mesNome(S.mes))}<span>${S.mes.slice(0, 4)}</span>`;
   const v = { resumo: vResumo, devedores: vDevedores, lancamentos: vLancamentos, pagamentos: vPagamentos, planejamento: vPlanejamento, ajustes: vAjustes }[S.view];
   $('#view').innerHTML = v();
+  pintarAlertaCx();
   if (focusBind) { const el = $(`[data-bind="${CSS.escape(focusBind)}"], [data-focus="${CSS.escape(focusBind)}"]`); if (el) { el.focus(); if (el.select && el.tagName === 'INPUT') el.select(); } }
   saveUI();
+}
+
+/* aviso vermelho no cabeçalho quando uma caixinha do mês atual está perto de estourar */
+function pintarAlertaCx() {
+  const el = $('#alerta-cx'); if (!el) return;
+  const mes = Core.todayISO().slice(0, 7);
+  const al = Core.alertasCaixinha(S.cfg, S.compras, mes);
+  if (!al.length) { el.innerHTML = ''; return; }
+  const um = al[0], estourou = al.filter(l => l.pct >= 1).length;
+  const pct = l => isFinite(l.pct) ? Math.round(l.pct * 100) + '%' : 'sem limite';
+  const txt = al.length === 1 ? `${um.n}: ${pct(um)} ${um.pct >= 1 ? '— estourou' : 'usado'}`
+    : `${al.length} caixinhas no limite${estourou ? ` (${estourou} estourada${estourou > 1 ? 's' : ''})` : ''}`;
+  el.innerHTML = `<button class="btn alerta-cx" data-act="cx-alerta" title="${esc(al.map(l => `${l.n}: ${brl(l.gasto)} de ${brl(l.limite)} (${pct(l)})`).join('\n'))}">${ico('alerta')}<span>${esc(txt)}</span></button>`;
 }
 
 /* ===== Resumo ===== */
@@ -886,12 +959,20 @@ function textoCobranca() {
     (pago ? `\nJá pago: ${brl(pago)}\nFalta: ${brl(tot - pago)}` : '') + (venc ? `\nVencimento: ${venc}` : '');
 }
 
+/* categorias = caixinhas do planejamento; inclui as já usadas que saíram do plano */
+function catsTodas(mes = S.mes) {
+  const lista = Core.categorias(S.cfg, mes).map(c => c.n);
+  for (const c of S.compras) if (c.cat && c.d === S.cfg.eu && !lista.includes(c.cat)) lista.push(c.cat);
+  return lista;
+}
+
 /* ===== Lançamentos ===== */
 function vLancamentos() {
   const f = S.lf; const q = f.q.trim().toLowerCase();
   const porData = !!(f.de || f.ate);
   let cs = S.compras.filter(c => (!f.d || c.d === f.d) && (!f.m || c.m === f.m) && (!q || c.c.toLowerCase().includes(q))
-    && (!f.de || c.dt >= f.de) && (!f.ate || c.dt <= f.ate));
+    && (!f.de || c.dt >= f.de) && (!f.ate || c.dt <= f.ate)
+    && (!f.cat || (c.d === S.cfg.eu && (f.cat === '-' ? !c.cat && !c.rec : c.cat === f.cat))));
   // cobranças mensais: só as do mês selecionado, a menos que esteja buscando por nome ou por data
   const nRecOcultas = q || porData ? 0 : cs.filter(c => c.rec && Recorr.mesDe(c) !== S.mes).length;
   if (!q && !porData) cs = cs.filter(c => !c.rec || Recorr.mesDe(c) === S.mes);
@@ -910,7 +991,7 @@ function vLancamentos() {
     const pagas = prox ? prox[0] - 1 : c.n;
     return `<div class="item click" data-compra="${c.i}" role="button" tabindex="0">
       <div style="min-width:0"><div class="t">${esc(c.c) || '<span class="muted">(sem descrição)</span>'}${c.rec ? ' <span class="chip">mensal</span>' : ''}</div>
-      <div class="meta"><b style="color:var(--ink-2)">${esc(c.d)}</b> · <span class="dot" style="background:${meioCor(c.m)}"></span>${esc(c.m)} · ${dataBR(c.dt)} · parcelas ${faixa} de ${c.n}${c.f1 ? ` · <span class="chip" title="Fatura escolhida no lançamento">fatura ${mesCurto(c.f1)}</span>` : ''}</div></div>
+      <div class="meta"><b style="color:var(--ink-2)">${esc(c.d)}</b> · <span class="dot" style="background:${meioCor(c.m)}"></span>${esc(c.m)} · ${dataBR(c.dt)} · parcelas ${faixa} de ${c.n}${c.f1 ? ` · <span class="chip" title="Fatura escolhida no lançamento">fatura ${mesCurto(c.f1)}</span>` : ''}${c.d === S.cfg.eu && c.cat ? ` · <span class="chip cat">${esc(c.cat)}</span>` : ''}</div></div>
       <div class="amt">${brl(c.v)}<div class="meta">${prox ? `próx. ${dataBR(prox[2])} · ${brl(prox[1])}` : 'quitada'}</div></div>
       <div class="prog"><i style="width:${c.n ? pagas / c.n * 100 : 100}%"></i></div></div>`;
   }).join('');
@@ -921,6 +1002,7 @@ function vLancamentos() {
       <input type="search" placeholder="Buscar compra" data-lf="q" data-focus="lf-q" value="${esc(f.q)}" style="flex:1;min-width:160px">
       <select data-lf="d" aria-label="Devedor">${opt(devsTodos(), f.d, 'Todos os devedores')}</select>
       <select data-lf="m" aria-label="Meio">${opt(S.cfg.meios.map(m => m.n), f.m, 'Todos os meios')}</select>
+      <select data-lf="cat" aria-label="Categoria de ${esc(S.cfg.eu)}"><option value="">Todas as categorias</option><option value="-" ${f.cat === '-' ? 'selected' : ''}>${esc(S.cfg.eu)}: sem categoria</option>${catsTodas().map(x => `<option ${x === f.cat ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
       <div class="seg">${[['aberto', 'Em aberto'], ['mes', 'Neste mês'], ['quitado', 'Quitadas'], ['todas', 'Todas']].map(([k, t]) => `<button data-act="lf-st" data-v="${k}" aria-pressed="${f.st === k}">${t}</button>`).join('')}</div>
       <label class="small chk-filtro"><input type="checkbox" data-act="lf-parc" ${f.parc ? 'checked' : ''}> Só parceladas</label>
     </div>
@@ -1000,7 +1082,7 @@ function vPlanejamento() {
     <div class="big"><div class="lbl">Sobra prevista em ${mesNome(S.mes)}</div><div class="val" style="color:${R.sobra >= 0 ? 'var(--paid)' : 'var(--stamp)'}">${brl(R.sobra)}</div><div class="hint">receita − gastos</div></div>
     <div><div class="lbl">Receita</div><div class="val">${brl(R.receita)}</div><div class="hint">salário + ajuda + extra</div></div>
     <div><div class="lbl">Gastos</div><div class="val">${brl(R.gastos)}</div><div class="hint">custo de vida + AP + outros</div></div>
-    <div><div class="lbl">Saldo mínimo hoje</div><div class="val">${brl(R.saldoMin)}</div><div class="hint">depois das contas já vencidas</div></div>
+    <div><div class="lbl">Necessário na conta hoje</div><div class="val">${brl(R.saldoMin)}</div><div class="hint">contas que ainda vão sair</div></div>
   </div>
   <datalist id="cx-list">${cxs.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
 
@@ -1034,7 +1116,8 @@ function vPlanejamento() {
       <div class="card"><table><thead><tr><th></th><th class="n">Por dia</th><th class="n">Dias</th><th class="n">Mês</th></tr></thead><tbody>
       <tr><td>Transporte</td><td>${inp('plan.ajuda.tDia')}</td><td>${inp('plan.ajuda.tDias', 'int')}</td><td class="n">${brl(P.ajuda.tDia * P.ajuda.tDias)}</td></tr>
       <tr><td>Alimentação</td><td>${inp('plan.ajuda.aDia')}</td><td>${inp('plan.ajuda.aDias', 'int')}</td><td class="n">${brl(P.ajuda.aDia * P.ajuda.aDias)}</td></tr></tbody>
-      <tfoot><tr><td colspan="3">Total</td><td class="n">${brl(R.ajuda)}</td></tr></tfoot></table></div></section>
+      <tfoot><tr><td colspan="3">Total</td><td class="n">${brl(R.ajuda)}</td></tr></tfoot></table>
+      ${vAjudaCalc()}</div></section>
   </div>
 
   <div class="grid2">
@@ -1059,14 +1142,65 @@ function vPlanejamento() {
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>Mês</th><th class="n">Parcela entrada</th><th class="n">Parcela documento</th><th class="n">Seguro obra</th><th class="n">Total</th></tr></thead><tbody>${apRows}</tbody></table></div>
   </section>
 
-  <section class="sec"><div class="sec-head"><h2>Conferência de saldo</h2><p>Quanto você precisa ter na conta hoje, ${dataBR(Core.todayISO())}, para guardar o que planejou e ainda pagar as contas que faltam em ${mesNome(R.mesHoje)}.</p></div>
-    <div class="card" style="max-width:560px"><dl class="kv">
-    <dt>A guardar<small>caixinhas do mês que não saem da conta: ${esc(R.caixinhas.filter(c => c.n !== P.ap.cxES && c.v).slice(0, 4).map(c => c.n).join(', '))}…</small></dt><dd>${brl(R.aGuardar)}</dd>
-    <dt>Contas que ainda vão sair<small>${R.contasPend.length ? esc(R.contasPend.map(c => `${c.n} (dia ${c.dia})`).join(', ')) : 'todas as contas do mês já foram debitadas'}</small></dt><dd>${brl(R.saldoMin)}</dd>
-    <dt class="tot">Necessário na conta hoje</dt><dd class="tot">${brl(R.necessario)}</dd>
-    <dt>Saldo atual informado<small>digite quanto há na conta agora</small></dt><dd style="width:130px">${inp('plan.saldoInf')}</dd>
-    <dt class="tot">${R.difSaldo < 0 ? 'Falta' : 'Sobra'}</dt><dd class="tot ${R.difSaldo < 0 ? 'owed' : 'paid'}">${brl(Math.abs(R.difSaldo))}</dd></dl>
-    <p class="small muted" style="margin:12px 0 0">Das caixinhas de ${mesNome(R.mesHoje)} (${brl(R.totalCxHoje)}), ${brl(R.jaSaiu)} já saíram da conta este mês.</p></div></section>`;
+  <section class="sec"><div class="sec-head"><h2>Saldo necessário na conta hoje</h2><p>${dataBR(Core.todayISO())} · contas de ${mesNome(R.mesHoje)} que ainda vão sair da conta</p></div>
+    <div class="card" style="max-width:560px">
+      ${R.contasPend.length ? `<table><tbody>${R.contasPend.map(c => `<tr><td>${esc(c.n)}</td><td class="muted small">${c.dia ? `dia ${c.dia}` : 'sem dia'}</td><td class="n">${brl(c.v)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="2">Necessário na conta hoje</td><td class="n">${brl(R.saldoMin)}</td></tr></tfoot></table>`
+      : `<p style="margin:0">Todas as contas de ${mesNome(R.mesHoje)} já saíram. <b>Necessário hoje: ${brl(0)}</b></p>`}
+    </div></section>
+
+  ${vCaixinhasGasto()}`;
+}
+
+/* calculadora: do total recebido para os dias de transporte e alimentação */
+function vAjudaCalc() {
+  const A = S.cfg.plan.ajuda; A.rec ??= {};
+  const total = A.rec[S.mes];
+  const max = Core.diasUteis(S.mes);
+  let res = '';
+  if (total > 0) {
+    const r = Core.diasDaAjuda(total, A.tDia, A.aDia, max);
+    const txt = o => `${o.t} ${o.t === 1 ? 'dia' : 'dias'} de transporte e ${o.a} de alimentação`;
+    const atual = o => o.t === A.tDias && o.a === A.aDias;
+    const bt = (o, rot) => `<button class="btn small ${atual(o) ? '' : 'primary'}" data-act="ajuda-usar" data-t="${o.t}" data-a="${o.a}" ${atual(o) ? 'disabled' : ''}>${rot || txt(o)}${atual(o) ? ' ✓' : ''}</button>`;
+    if (r.exatas.length === 1) {
+      const o = r.exatas[0];
+      res = atual(o) ? `<p class="paid" style="margin:0"><b>Confere:</b> ${txt(o)}.</p>`
+        : `<p style="margin:0 0 6px">Dá exatamente <b>${txt(o)}</b>.</p>${bt(o, 'Usar esses dias')}`;
+    } else if (r.exatas.length > 1) {
+      res = `<p style="margin:0 0 6px"><b class="owed">${r.exatas.length} combinações dão esse mesmo valor.</b> Qual foi a sua?</p>
+        <div class="ajuda-ops">${r.exatas.slice(0, 6).map(o => bt(o)).join('')}</div>${r.exatas.length > 6 ? `<p class="small muted" style="margin:6px 0 0">e mais ${r.exatas.length - 6}, menos prováveis (dias muito diferentes entre transporte e alimentação)</p>` : ''}`;
+    } else {
+      const o = r.perto, acima = total > max * (A.tDia + A.aDia);
+      res = `<p style="margin:0 0 6px"><b class="owed">${acima ? `Passa do máximo possível em ${mesNome(S.mes)}` : 'Nenhuma combinação dá exatamente esse valor'}</b>${acima ? ` (${max} dias úteis = ${brl(max * (A.tDia + A.aDia))})` : ''}. Confira o valor por dia${acima ? ' ou o mês' : ''}.</p>
+        <p class="small muted" style="margin:0 0 6px">Mais perto: ${txt(o)}, ${o.dif > 0 ? 'sobram' : 'faltam'} ${brl(Math.abs(o.dif))}.</p>${bt(o, 'Usar mesmo assim')}`;
+    }
+  }
+  return `<div class="ajuda-calc">
+    <label class="field">Total que entrou em ${mesNome(S.mes)}${inp(`plan.ajuda.rec.${S.mes}`, 'numnull', 'placeholder="R$ 0,00" style="max-width:150px"')}</label>
+    <p class="small muted" style="margin:2px 0 8px">Calculo de volta os dias, até ${max} dias úteis (segunda a sexta de ${mesNome(S.mes)}).</p>
+    ${res}</div>`;
+}
+
+/* gasto do dono em cada caixinha x o que foi destinado no planejamento */
+function vCaixinhasGasto() {
+  const G = Core.gastosPorCaixinha(S.cfg, S.compras, S.mes);
+  const lim = (S.cfg.plan.alertaPct || 85);
+  const linhas = G.linhas.filter(l => l.limite > 0 || l.gasto > 0).sort((a, b) => b.pct - a.pct || a.n.localeCompare(b.n, 'pt-BR'));
+  const corDe = l => l.pct >= 1 ? 'var(--stamp)' : l.pct >= lim / 100 ? 'var(--owed)' : 'var(--paid)';
+  const rows = linhas.map(l => `<tr class="${l.gasto ? 'click' : ''}" ${l.gasto ? `data-act="cx-ver" data-cat="${esc(l.n)}"` : ''}>
+    <td><b>${esc(l.n)}</b>${l.tipo === 'antiga' ? ' <span class="chip warn" title="Essa caixinha não existe mais no planejamento">fora do plano</span>' : ''}</td>
+    <td class="n">${brl(l.limite)}</td><td class="n">${l.gasto ? brl(l.gasto) : '—'}</td>
+    <td class="n ${l.resta < 0 ? 'owed' : ''}">${brl(l.resta)}</td>
+    <td style="min-width:120px"><div class="cx-barra"><i style="width:${Math.min(100, (isFinite(l.pct) ? l.pct : 1) * 100)}%;background:${corDe(l)}"></i></div><span class="small" style="color:${corDe(l)};font-weight:700">${isFinite(l.pct) ? Math.round(l.pct * 100) + '%' : 'sem limite'}</span></td></tr>`).join('');
+  return `<section class="sec" id="cx-gastos"><div class="sec-head"><h2>Gastos de ${esc(S.cfg.eu)} por caixinha · ${cap(mesNome(S.mes))}</h2>
+    <p>Compras de ${esc(S.cfg.eu)} feitas em ${mesNome(S.mes)}, pela categoria, contra o que o planejamento destina para cada caixinha.</p></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Caixinha</th><th class="n">Destinado</th><th class="n">Gasto</th><th class="n">Resta</th><th>Uso</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="5" class="empty">Nenhuma caixinha com valor neste mês.</td></tr>'}</tbody></table></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:10px">
+      ${G.semCat.length ? `<button class="btn small" data-act="cx-semcat">${G.semCat.length} compra(s) de ${esc(S.cfg.eu)} sem categoria em ${mesCurto(S.mes)}</button>` : ''}
+      <label class="small" style="display:inline-flex;gap:6px;align-items:center;font-weight:600;color:var(--ink-2)">Avisar a partir de ${inp('plan.alertaPct', 'int', 'style="width:56px" placeholder="85"')} % da caixinha</label>
+    </div></section>`;
 }
 
 /* ===== Ajustes ===== */
@@ -1288,7 +1422,11 @@ function parseLote(txt, modo) {
     let prim = o.primeira ?? o.venc ?? null, fat = null;
     const md = meio && Core.meioDe(S.cfg, meio);
     if (f1 && md) { if (md.t === 'cartao') fat = f1; else if (!prim) prim = Core.dateIn(f1, md.v || 15); }
-    compras.push({ devs, descr, meio, dt, v, n, erros, prim, fat });
+    // categoria (caixinha) só vale para as compras do próprio dono
+    const catBruta = o.cat ?? o.categoria ?? o.caixinha;
+    let cat = '';
+    if (catBruta != null && catBruta !== '') { cat = acharNome(catsTodas(dt ? dt.slice(0, 7) : S.mes), catBruta) || ''; if (!cat) erros.push(`categoria “${catBruta}” não existe`); }
+    compras.push({ devs, descr, meio, dt, v, n, erros, prim, fat, cat });
   }
   for (const o of (j.pags || j.pagamentos || [])) {
     const dev = acharNome(nomes, o.d ?? o.devedor);
@@ -1335,7 +1473,7 @@ function dlgColar(modo) {
     const linhas = lote.compras.map(c => {
       const venc = !c.erros.length ? parcelas(c, c.v)[0][2] : null;
       return `<tr class="${c.erros.length ? 'dim' : ''}"><td class="wrap">${esc(c.descr) || '—'}</td><td>${esc(c.devs.filter(Boolean).join(' + ')) || '—'}</td><td>${esc(c.meio || '—')}</td><td>${c.dt ? dataBR(c.dt) : '—'}</td><td class="n">${isFinite(c.v) ? brl(c.v) : '—'}</td><td class="n">${c.n}x</td>
-      <td class="small">${c.erros.length ? `<span class="owed">${esc(c.erros.join('; '))}</span>` : `1ª em ${dataBR(venc)}${c.fat ? ' <span class="chip">fatura escolhida</span>' : ''}${c.devs.length > 1 ? ` · ${brl(c.v / c.devs.length)} cada` : ''}`}</td></tr>`;
+      <td class="small">${c.erros.length ? `<span class="owed">${esc(c.erros.join('; '))}</span>` : `1ª em ${dataBR(venc)}${c.fat ? ' <span class="chip">fatura escolhida</span>' : ''}${c.cat && c.devs.includes(S.cfg.eu) ? ` <span class="chip cat">${esc(c.cat)}</span>` : ''}${c.devs.length > 1 ? ` · ${brl(c.v / c.devs.length)} cada` : ''}`}</td></tr>`;
     }).join('');
     const linhasP = lote.pags.map(p => {
       const rep = p.repetido;
@@ -1366,7 +1504,7 @@ function dlgColar(modo) {
     for (const c of lote.compras.filter(x => !x.erros.length)) {
       const cada = c.v / c.devs.length;
       for (const dev of c.devs) {
-        S.compras.push({ i: uid('c'), d: dev, m: c.meio, c: c.descr, dt: c.dt, v: cada, n: c.n, ...(c.fat ? { f1: c.fat } : {}), p: parcelas(c, cada) });
+        S.compras.push({ i: uid('c'), d: dev, m: c.meio, c: c.descr, dt: c.dt, v: cada, n: c.n, ...(c.fat ? { f1: c.fat } : {}), ...(c.cat && dev === S.cfg.eu ? { cat: c.cat } : {}), p: parcelas(c, cada) });
         nc++;
       }
     }
@@ -1382,8 +1520,8 @@ function dlgCompra(id, pre = {}) {
   const c = id ? S.compras.find(x => x.i === id) : null;
   const d = $('#dlg'); d.className = '';
   const meios = S.cfg.meios;
-  const v = c ? { d: [c.d], m: c.m, c: c.c, dt: c.dt, total: c.v, n: c.n, ini: Math.min(...c.p.map(p => p[0])), prim: c.p[0] && c.p[0][2], f1: c.f1 || '' }
-    : { d: pre.d ? [pre.d] : [], m: pre.m || meios[0].n, c: pre.c || '', dt: pre.dt || Core.todayISO(), total: pre.total ?? '', n: pre.n || 1, ini: pre.ini || 1, prim: '', f1: pre.f1 || '' };
+  const v = c ? { d: [c.d], m: c.m, c: c.c, dt: c.dt, total: c.v, n: c.n, ini: Math.min(...c.p.map(p => p[0])), prim: c.p[0] && c.p[0][2], f1: c.f1 || '', cat: c.cat || '' }
+    : { d: pre.d ? [pre.d] : [], m: pre.m || meios[0].n, c: pre.c || '', dt: pre.dt || Core.todayISO(), total: pre.total ?? '', n: pre.n || 1, ini: pre.ini || 1, prim: '', f1: pre.f1 || '', cat: pre.cat || '' };
   let fatSel = v.f1, fatChave = '';
   const devOpts = devsAtivos();
   if (c && !devOpts.includes(c.d)) devOpts.push(c.d);
@@ -1394,6 +1532,7 @@ function dlgCompra(id, pre = {}) {
         ${c ? `<select name="dev">${devOpts.map(n => `<option ${n === c.d ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`
       : `<div class="pick">${devOpts.map(n => `<label><input type="checkbox" name="dev" value="${esc(n)}" ${v.d.includes(n) ? 'checked' : ''}>${esc(n)}</label>`).join('')}</div>`}</div>
       <label class="field full">Descrição<input name="c" value="${esc(v.c)}" required autocomplete="off"></label>
+      <label class="field full" id="cat-wrap">Categoria de ${esc(S.cfg.eu)} <span class="muted" style="font-weight:400">(caixinha do planejamento)</span><select name="cat"><option value="">Sem categoria</option>${(() => { const l = catsTodas(v.dt.slice(0, 7)); if (v.cat && !l.includes(v.cat)) l.push(v.cat); return l.map(x => `<option ${x === v.cat ? 'selected' : ''}>${esc(x)}</option>`).join(''); })()}</select></label>
       <label class="field">Meio de pagamento<select name="m">${meios.map(m => `<option ${m.n === v.m ? 'selected' : ''}>${esc(m.n)}</option>`).join('')}</select></label>
       <label class="field">Data da compra<input type="date" name="dt" value="${v.dt}" required></label>
       <label class="field">Valor total (R$)<input name="total" inputmode="decimal" value="${esc(numBR(v.total))}" required></label>
@@ -1411,7 +1550,7 @@ function dlgCompra(id, pre = {}) {
     const fd = new FormData(f);
     const devs = fd.getAll('dev');
     const meio = fd.get('m'); const tipo = Core.meioDe(S.cfg, meio)?.t;
-    return { devs, meio, tipo, c: String(fd.get('c')).trim(), dt: fd.get('dt'), total: parseNum(fd.get('total')), n: parseInt(fd.get('n')) || 1, ini: parseInt(fd.get('ini')) || 1, prim: fd.get('prim') || '' };
+    return { devs, meio, tipo, c: String(fd.get('c')).trim(), dt: fd.get('dt'), total: parseNum(fd.get('total')), n: parseInt(fd.get('n')) || 1, ini: parseInt(fd.get('ini')) || 1, prim: fd.get('prim') || '', cat: fd.get('cat') || '' };
   };
   /* fatura da 1ª parcela: a do fechamento ou a anterior/seguinte, à escolha */
   const pintarFatura = x => {
@@ -1442,6 +1581,7 @@ function dlgCompra(id, pre = {}) {
   const prev = () => {
     const x = ler();
     $('#prim-wrap').style.display = x.tipo === 'cartao' ? 'none' : '';
+    $('#cat-wrap').style.display = x.devs.includes(S.cfg.eu) ? '' : 'none';
     pintarFatura(x);
     const el = $('#prev');
     if (!x.dt || !(x.total > 0 || x.total < 0) || x.ini > x.n) { el.innerHTML = '<span class="muted">Preencha data, valor e parcelas.</span>'; return; }
@@ -1462,12 +1602,13 @@ function dlgCompra(id, pre = {}) {
       const antigo = 'c-' + c.dt.slice(0, 7);
       Object.assign(c, { d: fd1(f, 'dev'), m: x.meio, c: x.c, dt: x.dt, v: x.total, n: x.n, p: Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: x.total, n: x.n, inicio: x.ini, primeira: prim, fatura: f1 }) });
       if (f1) c.f1 = f1; else delete c.f1;
+      if (c.d === S.cfg.eu && x.cat) c.cat = x.cat; else delete c.cat;
       if (c.rec) c.man = true;
       Store.mark(antigo, 'c-' + c.dt.slice(0, 7));
       toast('Compra salva');
     } else {
       const each = x.total / x.devs.length;
-      for (const dv of x.devs) S.compras.push({ i: uid('c'), d: dv, m: x.meio, c: x.c, dt: x.dt, v: each, n: x.n, ...(f1 ? { f1 } : {}), p: Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: each, n: x.n, inicio: x.ini, primeira: prim, fatura: f1 }) });
+      for (const dv of x.devs) S.compras.push({ i: uid('c'), d: dv, m: x.meio, c: x.c, dt: x.dt, v: each, n: x.n, ...(f1 ? { f1 } : {}), ...(dv === S.cfg.eu && x.cat ? { cat: x.cat } : {}), p: Core.gerarParcelas(S.cfg, { meio: x.meio, data: x.dt, total: each, n: x.n, inicio: x.ini, primeira: prim, fatura: f1 }) });
       Store.mark('c-' + x.dt.slice(0, 7));
       toast(x.devs.length > 1 ? `Lançada para ${x.devs.length} pessoas` : 'Compra lançada');
     }
@@ -1558,6 +1699,16 @@ document.addEventListener('click', async e => {
     case 'obs': dlgObs(t.dataset.n || S.devSel, t.dataset.m || S.mes); break;
     case 'lf-st': S.lf.st = t.dataset.v; S.lf.lim = 80; render(); break;
     case 'lf-parc': S.lf.parc = t.checked; S.lf.lim = 80; render(); break;
+    case 'ajuda-usar': {
+      const A = S.cfg.plan.ajuda; A.tDias = +t.dataset.t; A.aDias = +t.dataset.a;
+      Store.mark('cfg'); render(); toast(`Ajuda de custo: ${A.tDias} dias de transporte e ${A.aDias} de alimentação`); break;
+    }
+    case 'cx-ver': case 'cx-semcat': {
+      const ini = S.mes + '-01', fim = Core.dateIn(S.mes, 31);
+      Object.assign(S.lf, { q: '', d: S.cfg.eu, m: '', st: 'todas', parc: false, de: ini, ate: fim, cat: a === 'cx-ver' ? t.dataset.cat : '-', lim: 80 });
+      S.view = 'lancamentos'; render(); scrollTo(0, 0); break;
+    }
+    case 'cx-alerta': S.view = 'planejamento'; S.mes = Core.todayISO().slice(0, 7); render(); setTimeout(() => { const el = $('#cx-gastos'); el && el.scrollIntoView({ behavior: 'smooth' }); }, 50); break;
     case 'lf-per': {
       const h = Core.todayISO(), mh = h.slice(0, 7), v = t.dataset.v;
       const ant = Core.addMonths(mh, -1);
@@ -1707,7 +1858,7 @@ document.addEventListener('change', async e => {
     if (!S.lf.de && !S.lf.ate && t.value) S.lf.st = 'todas';   // filtrando por data, mostra quitadas também
     S.lf[t.dataset.lf] = t.value; S.lf.lim = 80; render();
   }
-  if (t.dataset.lf === 'd' || t.dataset.lf === 'm') { S.lf[t.dataset.lf] = t.value; S.lf.lim = 80; render(); }
+  if (t.dataset.lf === 'd' || t.dataset.lf === 'm' || t.dataset.lf === 'cat') { S.lf[t.dataset.lf] = t.value; S.lf.lim = 80; render(); }
   if (t.dataset.pf) { S.pf[t.dataset.pf] = t.value; render(); }
 });
 document.addEventListener('input', e => {
