@@ -292,6 +292,7 @@ const Core = (() => {
   const daysIn = mes => { const [y, m] = mes.split('-').map(Number); return new Date(y, m, 0).getDate(); };
   const dateIn = (mes, dia) => `${mes}-${pad(Math.min(dia, daysIn(mes)))}`;
   const monthDiff = (a, b) => { const [ya, ma] = a.split('-').map(Number); const [yb, mb] = b.split('-').map(Number); return (yb - ya) * 12 + (mb - ma); };
+  const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
   const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 
   const meioDe = (cfg, nome) => cfg.meios.find(m => m.n === nome);
@@ -518,20 +519,31 @@ const Core = (() => {
     const fora = n => n === P.ap.cxES || n === P.ap.cxD || /parcela/i.test(n);
     return planejamento(cfg, mes).caixinhas.filter(c => !fora(c.n)).map(c => ({ n: c.n, limite: c.v, tipo: c.tipo }));
   }
-  function gastosPorCaixinha(cfg, compras, mes) {
+  /* saldo atual de cada caixinha (vindo do print) menos as compras do dono feitas depois dele */
+  function gastosPorCaixinha(cfg, compras, mes = todayISO().slice(0, 7)) {
     const cats = categorias(cfg, mes);
-    const gasto = new Map();
-    for (const c of compras) if (c.d === cfg.eu && c.cat && c.dt.slice(0, 7) === mes) gasto.set(c.cat, (gasto.get(c.cat) || 0) + c.v);
-    const linhas = cats.map(c => ({ ...c, gasto: gasto.get(c.n) || 0 }));
-    for (const [n, v] of gasto) if (!cats.some(c => c.n === n)) linhas.push({ n, limite: 0, gasto: v, tipo: 'antiga' });
-    for (const l of linhas) { l.resta = l.limite - l.gasto; l.pct = l.limite > 0 ? l.gasto / l.limite : (l.gasto > 0 ? Infinity : 0); }
-    const semCat = compras.filter(c => c.d === cfg.eu && !c.cat && !c.rec && c.dt.slice(0, 7) === mes);
-    return { linhas, semCat };
+    const sal = (cfg.plan && cfg.plan.cxSaldo) || {};
+    const eu = compras.filter(c => c.d === cfg.eu && c.cat);
+    const linha = (n, tipo) => {
+      const s = sal[n] || null;
+      const depois = s ? eu.filter(c => c.cat === n && c.dt > s.em) : [];
+      const gasto = depois.reduce((t, c) => t + c.v, 0);
+      const saldo = s ? s.v : null;
+      const resta = s ? saldo - gasto : null;
+      const pct = !s ? 0 : saldo > 0 ? gasto / saldo : (gasto > 0 ? Infinity : 0);
+      return { n, tipo, saldo, em: s && s.em, gasto, resta, pct, qtd: depois.length };
+    };
+    const linhas = cats.map(c => linha(c.n, c.tipo));
+    for (const c of eu) if (!linhas.some(l => l.n === c.cat)) linhas.push(linha(c.cat, 'antiga'));
+    const datas = Object.values(sal).map(x => x.em).filter(Boolean).sort();
+    const desde = datas.length ? datas[datas.length - 1] : mes + '-00';
+    const semCat = compras.filter(c => c.d === cfg.eu && !c.cat && !c.rec && c.dt > desde);
+    return { linhas, semCat, desde: datas.length ? desde : null };
   }
-  /* caixinhas acima do ponto de alerta (padrão 85%) */
-  function alertasCaixinha(cfg, compras, mes) {
+  /* caixinhas cujo saldo já foi consumido além do ponto de alerta (padrão 85%) */
+  function alertasCaixinha(cfg, compras) {
     const lim = ((cfg.plan && cfg.plan.alertaPct) || 85) / 100;
-    return gastosPorCaixinha(cfg, compras, mes).linhas.filter(l => l.gasto > 0 && l.pct >= lim).sort((a, b) => b.pct - a.pct);
+    return gastosPorCaixinha(cfg, compras).linhas.filter(l => l.saldo != null && l.gasto > 0 && l.pct >= lim).sort((a, b) => b.pct - a.pct);
   }
 
   function apTabela(A) {
@@ -564,7 +576,7 @@ const Core = (() => {
     return { linhas, taxaE, taxaS };
   }
 
-  return { r2, pad, ym, addMonths, daysIn, dateIn, monthDiff, todayISO, meioDe, vencimento, faturaAuto, gerarParcelas, indexar, resumo, saldoDevedor, dataCobranca, planejamento, apTabela, diasUteis, diasDaAjuda, categorias, gastosPorCaixinha, alertasCaixinha };
+  return { r2, pad, ym, addMonths, addDays, daysIn, dateIn, monthDiff, todayISO, meioDe, vencimento, faturaAuto, gerarParcelas, indexar, resumo, saldoDevedor, dataCobranca, planejamento, apTabela, diasUteis, diasDaAjuda, categorias, gastosPorCaixinha, alertasCaixinha };
 })();
 
 
@@ -769,14 +781,13 @@ function render() {
 /* aviso vermelho no cabeçalho quando uma caixinha do mês atual está perto de estourar */
 function pintarAlertaCx() {
   const el = $('#alerta-cx'); if (!el) return;
-  const mes = Core.todayISO().slice(0, 7);
-  const al = Core.alertasCaixinha(S.cfg, S.compras, mes);
+  const al = Core.alertasCaixinha(S.cfg, S.compras);
   if (!al.length) { el.innerHTML = ''; return; }
   const um = al[0], estourou = al.filter(l => l.pct >= 1).length;
   const pct = l => isFinite(l.pct) ? Math.round(l.pct * 100) + '%' : 'sem limite';
-  const txt = al.length === 1 ? `${um.n}: ${pct(um)} ${um.pct >= 1 ? '— estourou' : 'usado'}`
+  const txt = al.length === 1 ? (um.pct >= 1 ? `${um.n}: estourou ${brl(-um.resta)}` : `${um.n}: restam ${brl(um.resta)}`)
     : `${al.length} caixinhas no limite${estourou ? ` (${estourou} estourada${estourou > 1 ? 's' : ''})` : ''}`;
-  el.innerHTML = `<button class="btn alerta-cx" data-act="cx-alerta" title="${esc(al.map(l => `${l.n}: ${brl(l.gasto)} de ${brl(l.limite)} (${pct(l)})`).join('\n'))}">${ico('alerta')}<span>${esc(txt)}</span></button>`;
+  el.innerHTML = `<button class="btn alerta-cx" data-act="cx-alerta" title="${esc(al.map(l => `${l.n}: gastou ${brl(l.gasto)} de ${brl(l.saldo)} (${pct(l)}) desde ${dataBR(l.em)}`).join('\n'))}">${ico('alerta')}<span>${esc(txt)}</span></button>`;
 }
 
 /* ===== Resumo ===== */
@@ -957,6 +968,26 @@ function textoCobranca() {
   const venc = parc.length ? dataBR(parc[parc.length - 1].venc) : '';
   return `Oi, ${n}! Segue o resumo de ${mesNome(m)}/${m.slice(0, 4)}:\n\n${linhas || '(nenhuma parcela)'}\n\nTotal: ${brl(tot)}` +
     (pago ? `\nJá pago: ${brl(pago)}\nFalta: ${brl(tot - pago)}` : '') + (venc ? `\nVencimento: ${venc}` : '');
+}
+
+/* Amazon Prime deixou de ter caixinha: vira conta do saldo, com o valor da parcela
+   mensal da anuidade lançada para o dono (uma vez só) */
+function migrarPrime() {
+  const P = S.cfg.plan; if (!P || P.migPrime) return false;
+  const it = P.itens.find(i => /amazon|prime/i.test(i.n) && !i.emp);
+  P.migPrime = 1;
+  if (!it) return true;
+  const hoje = Core.todayISO().slice(0, 7);
+  const cs = S.compras.filter(c => c.d === S.cfg.eu && /prime/i.test(c.c)).sort((a, b) => b.dt.localeCompare(a.dt));
+  const c = cs.find(c => c.p.some(p => p[2].slice(0, 7) >= hoje)) || cs[0];
+  if (c) {
+    const p = c.p.find(p => p[2].slice(0, 7) >= hoje) || c.p[c.p.length - 1];
+    it.b = Core.r2(p[1]); it.dia = Number(p[2].slice(8, 10));
+  }
+  it.q = ['v', 1]; it.r = 0; delete it.mn; delete it.lk;
+  if (P.cxSaldo) delete P.cxSaldo[it.cx];
+  it.cx = P.ap.cxES;
+  return true;
 }
 
 /* categorias = caixinhas do planejamento; inclui as já usadas que saíram do plano */
@@ -1182,24 +1213,30 @@ function vAjudaCalc() {
     ${res}</div>`;
 }
 
-/* gasto do dono em cada caixinha x o que foi destinado no planejamento */
+/* saldo de cada caixinha (do print) x o que o dono gastou depois dele */
 function vCaixinhasGasto() {
-  const G = Core.gastosPorCaixinha(S.cfg, S.compras, S.mes);
+  const G = Core.gastosPorCaixinha(S.cfg, S.compras);
   const lim = (S.cfg.plan.alertaPct || 85);
-  const linhas = G.linhas.filter(l => l.limite > 0 || l.gasto > 0).sort((a, b) => b.pct - a.pct || a.n.localeCompare(b.n, 'pt-BR'));
+  const ordem = l => l.saldo == null ? -1 : isFinite(l.pct) ? l.pct : 9;
+  const linhas = G.linhas.slice().sort((a, b) => ordem(b) - ordem(a) || a.n.localeCompare(b.n, 'pt-BR'));
   const corDe = l => l.pct >= 1 ? 'var(--stamp)' : l.pct >= lim / 100 ? 'var(--owed)' : 'var(--paid)';
-  const rows = linhas.map(l => `<tr class="${l.gasto ? 'click' : ''}" ${l.gasto ? `data-act="cx-ver" data-cat="${esc(l.n)}"` : ''}>
-    <td><b>${esc(l.n)}</b>${l.tipo === 'antiga' ? ' <span class="chip warn" title="Essa caixinha não existe mais no planejamento">fora do plano</span>' : ''}</td>
-    <td class="n">${brl(l.limite)}</td><td class="n">${l.gasto ? brl(l.gasto) : '—'}</td>
-    <td class="n ${l.resta < 0 ? 'owed' : ''}">${brl(l.resta)}</td>
-    <td style="min-width:120px"><div class="cx-barra"><i style="width:${Math.min(100, (isFinite(l.pct) ? l.pct : 1) * 100)}%;background:${corDe(l)}"></i></div><span class="small" style="color:${corDe(l)};font-weight:700">${isFinite(l.pct) ? Math.round(l.pct * 100) + '%' : 'sem limite'}</span></td></tr>`).join('');
-  return `<section class="sec" id="cx-gastos"><div class="sec-head"><h2>Gastos de ${esc(S.cfg.eu)} por caixinha · ${cap(mesNome(S.mes))}</h2>
-    <p>Compras de ${esc(S.cfg.eu)} feitas em ${mesNome(S.mes)}, pela categoria, contra o que o planejamento destina para cada caixinha.</p></div>
-    <div class="tbl-wrap"><table><thead><tr><th>Caixinha</th><th class="n">Destinado</th><th class="n">Gasto</th><th class="n">Resta</th><th>Uso</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="5" class="empty">Nenhuma caixinha com valor neste mês.</td></tr>'}</tbody></table></div>
+  const rows = linhas.map(l => {
+    const sem = l.saldo == null;
+    return `<tr>
+    <td><b>${esc(l.n)}</b>${l.tipo === 'antiga' ? ' <span class="chip warn" title="Essa caixinha não existe mais no planejamento">fora do plano</span>' : ''}${l.em ? `<div class="small muted">print de ${dataBR(l.em)}</div>` : ''}</td>
+    <td class="n" style="width:130px"><input class="num" data-cxsaldo="${esc(l.n)}" inputmode="decimal" value="${sem ? '' : l.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}" placeholder="informar" aria-label="Saldo de ${esc(l.n)}"></td>
+    <td class="n">${l.gasto ? `<button class="btn link small" data-act="cx-ver" data-cat="${esc(l.n)}" title="Ver as compras">${brl(l.gasto)}</button>` : '—'}</td>
+    <td class="n ${!sem && l.resta < 0 ? 'owed' : ''}"><b>${sem ? '—' : brl(l.resta)}</b></td>
+    <td style="min-width:120px">${sem ? '<span class="small muted">sem saldo</span>' : `<div class="cx-barra"><i style="width:${Math.min(100, (isFinite(l.pct) ? l.pct : 1) * 100)}%;background:${corDe(l)}"></i></div><span class="small" style="color:${corDe(l)};font-weight:700">${isFinite(l.pct) ? Math.round(l.pct * 100) + '% usado' : 'estourou'}</span>`}</td></tr>`;
+  }).join('');
+  return `<section class="sec" id="cx-gastos"><div class="sec-head"><h2>Caixinhas de ${esc(S.cfg.eu)}</h2>
+    <p>Saldo de cada caixinha no último print, menos as compras de ${esc(S.cfg.eu)} com essa categoria feitas depois do dia do print.</p><div class="spacer"></div>
+    <button class="btn small" data-act="colar-cx">${ico('copy', 'Colar saldos')}</button></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Caixinha</th><th class="n">Saldo no print</th><th class="n">Gasto depois</th><th class="n">Disponível</th><th>Uso</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="5" class="empty">Nenhuma caixinha no planejamento.</td></tr>'}</tbody></table></div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:10px">
-      ${G.semCat.length ? `<button class="btn small" data-act="cx-semcat">${G.semCat.length} compra(s) de ${esc(S.cfg.eu)} sem categoria em ${mesCurto(S.mes)}</button>` : ''}
-      <label class="small" style="display:inline-flex;gap:6px;align-items:center;font-weight:600;color:var(--ink-2)">Avisar a partir de ${inp('plan.alertaPct', 'int', 'style="width:56px" placeholder="85"')} % da caixinha</label>
+      ${G.semCat.length ? `<button class="btn small" data-act="cx-semcat">${G.semCat.length} compra(s) de ${esc(S.cfg.eu)} sem categoria ${G.desde ? `desde ${dataBR(G.desde)}` : `em ${mesCurto(S.mes)}`}</button>` : ''}
+      <label class="small" style="display:inline-flex;gap:6px;align-items:center;font-weight:600;color:var(--ink-2)">Avisar quando gastar ${inp('plan.alertaPct', 'int', 'style="width:56px" placeholder="85"')} % do saldo</label>
     </div></section>`;
 }
 
@@ -1390,6 +1427,11 @@ function mesDoTexto(v) {
   m = s.match(/^(\d{1,2})[\/.-](\d{2}|\d{4})$/); if (m) return `${m[2].length === 2 ? '20' + m[2] : m[2]}-${Core.pad(+m[1])}`;
   return '';
 }
+const normNome = x => String(x ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+function acharCaixinha(lista, v) {
+  const k = normNome(v); if (!k) return null;
+  return lista.find(x => normNome(x) === k) || lista.find(x => normNome(x).includes(k) || k.includes(normNome(x))) || null;
+}
 function parseLote(txt, modo) {
   let s = String(txt || '').trim().replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim();
   if (!s) return { erro: 'Cole o bloco que o Claude gerou.' };
@@ -1440,19 +1482,42 @@ function parseLote(txt, modo) {
     if (!isFinite(v) || !v) erros.push('valor inválido');
     pags.push({ dev, dt, v, f, meio, erros });
   }
-  if (!compras.length && !pags.length) return { erro: 'O bloco não trouxe nenhuma compra nem pagamento.' };
-  return { compras, pags };
+  // saldos das caixinhas (print do banco)
+  const cxs = [];
+  const brutoCx = j.caixinhas || j.saldos;
+  if (brutoCx) {
+    const dtCx = dataDoTexto(j.dt ?? j.data);
+    const cats = Core.categorias(S.cfg, Core.todayISO().slice(0, 7)).map(c => c.n);
+    const P = S.cfg.plan, fora = [P.ap.cxES, P.ap.cxD, ...P.itens.map(i => i.cx)].filter(Boolean).filter(n => !cats.includes(n));
+    const lista = Array.isArray(brutoCx) ? brutoCx : Object.entries(brutoCx).map(([n, v]) => ({ n, v }));
+    for (const o of lista) {
+      const nome = o.n ?? o.nome ?? o.caixinha;
+      const v = parseNum(o.v ?? o.valor ?? o.saldo);
+      const n = acharCaixinha(cats, nome);
+      const erros = [];
+      let ignorada = false;
+      if (!n) { if (acharCaixinha(fora, nome)) ignorada = true; else erros.push(`caixinha “${nome ?? ''}” não existe no planejamento`); }
+      if (!isFinite(v)) erros.push('valor inválido');
+      if (!dtCx) erros.push('data do print inválida');
+      const antes = n && P.cxSaldo && P.cxSaldo[n] || null;
+      cxs.push({ nome, n, v, em: dtCx, erros, ignorada, antes });
+    }
+  }
+  if (!compras.length && !pags.length && !cxs.length) return { erro: 'O bloco não trouxe nenhuma compra, pagamento nem caixinha.' };
+  return { compras, pags, cxs };
 }
 function dlgColar(modo) {
-  const soPags = modo === 'pags';
+  const soPags = modo === 'pags', soCx = modo === 'cx';
   const d = $('#dlg'); d.className = 'wide';
-  const exemplo = soPags
+  const exemplo = soCx ? '{"app":"caderneta-caixinhas","dt":"17/10/2026","caixinhas":[{"n":"Lazer","v":350.2},{"n":"Combustível","v":180}]}' : soPags
     ? '{"app":"caderneta-lote","pags":[{"d":"Beto","v":1000,"dt":"20/09/2026","f":"2026-09","m":"Pix"}]}'
     : '{"app":"caderneta-lote","compras":[{"d":"Lidia","m":"Inter","c":"Farmácia","dt":"22/09/2026","v":150,"n":3}]}';
   d.innerHTML = `<form method="dialog" id="f-colar">
-    <div class="dlg-head"><h2>${soPags ? 'Colar pagamentos' : 'Colar lançamentos'}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
+    <div class="dlg-head"><h2>${soCx ? 'Colar saldos das caixinhas' : soPags ? 'Colar pagamentos' : 'Colar lançamentos'}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
     <div class="dlg-body">
-      <p class="full small muted" style="margin:0">${soPags
+      <p class="full small muted" style="margin:0">${soCx
+        ? 'Mande o print das caixinhas para o Claude e cole aqui o bloco que ele devolver. O saldo de cada caixinha passa a ser o valor do print; as compras feitas depois do dia do print vão sendo descontadas.'
+        : soPags
         ? 'Cole o bloco JSON com os pagamentos recebidos (ou abra um arquivo .json). Cada pagamento abate a fatura indicada em <code>f</code> (AAAA-MM); sem ela, vale o mês da data. A prévia mostra o que será lançado.'
         : 'Peça as compras ao Claude, copie o bloco que ele devolver e cole aqui (ou abra um arquivo .json). A prévia mostra o que será lançado.'}</p>
       <textarea class="full" id="lote" rows="7" placeholder='${exemplo}' style="width:100%;border:1px solid var(--rule);border-radius:6px;padding:8px;background:var(--sheet-2);font-family:ui-monospace,monospace;font-size:13px"></textarea>
@@ -1480,11 +1545,13 @@ function dlgColar(modo) {
       return `<tr class="${p.erros.length || rep ? 'dim' : ''}"><td class="wrap">Pagamento</td><td>${esc(p.dev || '—')}</td><td>${esc(p.meio)}</td><td>${p.dt ? dataBR(p.dt) : '—'}</td><td class="n">${isFinite(p.v) ? brl(p.v) : '—'}</td><td class="n">fatura ${p.f ? mesCurto(p.f) : '—'}</td><td class="small">${p.erros.length ? `<span class="owed">${esc(p.erros.join('; '))}</span>` : rep ? '<span class="chip warn">já lançado</span> não entra de novo' : 'abate a fatura'}</td></tr>`;
     }).join('');
     const nRep = lote.pags.filter(p => p.repetido).length;
-    const nProb = lote.compras.length - bons.length + lote.pags.length - bonsP.length - nRep;
-    const partes = [bons.length ? `${bons.length} compra(s)` : '', bonsP.length ? `${bonsP.length} pagamento(s)` : ''].filter(Boolean).join(' e ') || 'Nada';
-    el.innerHTML = `<div class="tbl-wrap" style="max-height:240px;overflow:auto"><table><thead><tr><th>Descrição</th><th>Devedor</th><th>Meio</th><th>Data</th><th class="n">Valor</th><th class="n">${lote.compras.length ? 'Parc.' : 'Fatura'}</th><th>Situação</th></tr></thead><tbody>${linhas}${linhasP}</tbody></table></div>
+    const bonsCx = lote.cxs.filter(c => !c.erros.length && !c.ignorada);
+    const linhasCx = lote.cxs.map(c => `<tr class="${c.erros.length || c.ignorada ? 'dim' : ''}"><td class="wrap">Caixinha</td><td><b>${esc(c.n || c.nome || '—')}</b></td><td>${c.antes ? `antes ${brl(c.antes.v)}` : '—'}</td><td>${c.em ? dataBR(c.em) : '—'}</td><td class="n">${isFinite(c.v) ? brl(c.v) : '—'}</td><td class="n"></td><td class="small">${c.erros.length ? `<span class="owed">${esc(c.erros.join('; '))}</span>` : c.ignorada ? 'não é categoria, fica de fora' : 'novo saldo'}</td></tr>`).join('');
+    const nProb = lote.compras.length - bons.length + lote.pags.length - bonsP.length - nRep + lote.cxs.filter(c => c.erros.length).length;
+    const partes = [bons.length ? `${bons.length} compra(s)` : '', bonsP.length ? `${bonsP.length} pagamento(s)` : '', bonsCx.length ? `${bonsCx.length} saldo(s) de caixinha` : ''].filter(Boolean).join(' e ') || 'Nada';
+    el.innerHTML = `<div class="tbl-wrap" style="max-height:240px;overflow:auto"><table><thead>${!lote.compras.length && !lote.pags.length ? '<tr><th></th><th>Caixinha</th><th>Saldo atual</th><th>Data do print</th><th class="n">Novo saldo</th><th></th><th>Situação</th></tr>' : `<tr><th>Descrição</th><th>Devedor</th><th>Meio</th><th>Data</th><th class="n">Valor</th><th class="n">${lote.compras.length ? 'Parc.' : 'Fatura'}</th><th>Situação</th></tr>`}</thead><tbody>${linhas}${linhasP}${linhasCx}</tbody></table></div>
       <p class="small muted" style="margin:8px 0 0">${partes} pronto(s) para lançar${nRep ? ` · ${nRep} já lançado(s), fica(m) de fora` : ''}${nProb ? ` · ${nProb} com problema ${nProb > 1 ? 'serão ignorados' : 'será ignorado'}` : ''}.</p>`;
-    ok.disabled = !bons.length && !bonsP.length;
+    ok.disabled = !bons.length && !bonsP.length && !bonsCx.length;
   };
   f.addEventListener('input', prev);
   $('#lote-colar').onclick = async () => {
@@ -1508,9 +1575,11 @@ function dlgColar(modo) {
         nc++;
       }
     }
+    let nx = 0;
+    for (const c of lote.cxs.filter(x => !x.erros.length && !x.ignorada)) { (S.cfg.plan.cxSaldo ??= {})[c.n] = { v: c.v, em: c.em }; nx++; }
     for (const p of lote.pags.filter(x => !x.erros.length && !x.repetido)) { S.pags.push({ i: uid('p'), d: p.dev, m: p.meio, dt: p.dt, v: p.v, f: p.f }); np++; }
     reindex(); Store.mark(); render();
-    toast([nc ? `${nc} compra(s)` : '', np ? `${np} pagamento(s)` : ''].filter(Boolean).join(' e ') + ' adicionados');
+    toast([nc ? `${nc} compra(s)` : '', np ? `${np} pagamento(s)` : '', nx ? `${nx} caixinha(s)` : ''].filter(Boolean).join(' e ') + ' atualizados');
   });
   d.showModal(); setTimeout(() => $('#lote').focus(), 30);
 }
@@ -1704,11 +1773,14 @@ document.addEventListener('click', async e => {
       Store.mark('cfg'); render(); toast(`Ajuda de custo: ${A.tDias} dias de transporte e ${A.aDias} de alimentação`); break;
     }
     case 'cx-ver': case 'cx-semcat': {
-      const ini = S.mes + '-01', fim = Core.dateIn(S.mes, 31);
+      const G = Core.gastosPorCaixinha(S.cfg, S.compras);
+      const l = a === 'cx-ver' && G.linhas.find(x => x.n === t.dataset.cat);
+      const base = a === 'cx-ver' ? l && l.em : G.desde;
+      const ini = base ? Core.addDays(base, 1) : S.mes + '-01', fim = '';
       Object.assign(S.lf, { q: '', d: S.cfg.eu, m: '', st: 'todas', parc: false, de: ini, ate: fim, cat: a === 'cx-ver' ? t.dataset.cat : '-', lim: 80 });
       S.view = 'lancamentos'; render(); scrollTo(0, 0); break;
     }
-    case 'cx-alerta': S.view = 'planejamento'; S.mes = Core.todayISO().slice(0, 7); render(); setTimeout(() => { const el = $('#cx-gastos'); el && el.scrollIntoView({ behavior: 'smooth' }); }, 50); break;
+    case 'cx-alerta': S.view = 'planejamento'; render(); setTimeout(() => { const el = $('#cx-gastos'); el && el.scrollIntoView({ behavior: 'smooth' }); }, 50); break;
     case 'lf-per': {
       const h = Core.todayISO(), mh = h.slice(0, 7), v = t.dataset.v;
       const ant = Core.addMonths(mh, -1);
@@ -1752,6 +1824,7 @@ document.addEventListener('click', async e => {
     }
     case 'colar': dlgColar(); break;
     case 'colar-pag': dlgColar('pags'); break;
+    case 'colar-cx': dlgColar('cx'); break;
     case 'conferir': dlgConferencia(t.dataset.m, S.mes, t.dataset.modo); break;
     case 'fat-mes': Fat.trocarMes(t.dataset.v); break;
     case 'fat-outro': Fat.trocarArquivo(); break;
@@ -1804,6 +1877,12 @@ document.addEventListener('change', async e => {
       const m = t.dataset.bind.split('.');
       const o = S.cfg.fat[m[1]][m[2]]; if (o && o.i == null && !o.p) delete S.cfg.fat[m[1]][m[2]];
     }
+    Store.mark('cfg'); render(); return;
+  }
+  if (t.dataset.cxsaldo != null) {
+    const C = S.cfg.plan.cxSaldo ??= {}; const v = parseNum(t.value);
+    if (isFinite(v) && t.value.trim() !== '') C[t.dataset.cxsaldo] = { v, em: Core.todayISO() };
+    else delete C[t.dataset.cxsaldo];
     Store.mark('cfg'); render(); return;
   }
   if (t.dataset.ap) {
@@ -3244,6 +3323,7 @@ function avisoDuplicados(fora) {
 
 async function posCarga() {
   if (!S.ready) return;
+  if (migrarPrime()) { Store.mark('cfg'); render(); }
   const sem = Recorr.semear();
   const r = Recorr.sincronizar();
   if (sem + r.mudou) { reindex(); render(); Store.mark(); }
@@ -3817,6 +3897,7 @@ function iniciar() {
   S.cfg.cobr ??= []; S.cfg.fat ??= {}; S.cfg.obs ??= {}; S.cfg.del ??= []; S.cfg.plan ??= DEFAULT_CFG().plan;
   if (S.cfg.taxa != null) { delete S.cfg.taxa; Store.dirty.add('tudo'); }
   for (const m of S.cfg.meios || []) if (m.t !== 'cartao' && !m.f) { m.f = 13; Store.dirty.add('tudo'); }
+  if (migrarPrime()) Store.dirty.add('tudo');
   const vistos = new Set();
   for (const it of S.cfg.plan.itens) { if (!it.id || vistos.has(it.id)) { it.id = uid('i'); Store.dirty.add('tudo'); } vistos.add(it.id); }
   shell(); render();
