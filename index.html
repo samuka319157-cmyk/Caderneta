@@ -3124,7 +3124,46 @@ const NOME_ARQ = 'caderneta.json';
 const CLIENT_ID_PADRAO = '448501927423-q1f8pq4bp8n79i18h0bpg10lnshc2n9i.apps.googleusercontent.com';
 
 const Auth = {
-  token: null, exp: 0, tc: null, lib: null, pedindo: null,
+  token: null, exp: 0, tc: null, lib: null, pedindo: null, saindo: false, erroRetorno: null,
+  /* app aberto pelo ícone da tela inicial do iPhone: a janelinha do Google não consegue
+     devolver o login, então o login vai e volta pela própria página */
+  get redirecao() { return navigator.standalone === true || localStorage.getItem('caderneta-login') === 'redirect'; },
+  get retorno() { return location.origin + location.pathname.replace(/index\.html$/, ''); },
+  guardarToken() { try { localStorage.setItem('caderneta-token', JSON.stringify({ t: this.token, exp: this.exp })); } catch (e) { } },
+  lerToken() {
+    try { const j = JSON.parse(localStorage.getItem('caderneta-token') || 'null'); if (j && j.t && Date.now() < j.exp) { this.token = j.t; this.exp = j.exp; } } catch (e) { }
+  },
+  /* volta do Google: o token vem depois do # do endereço */
+  lerRetorno() {
+    const h = location.hash;
+    if (!/(access_token|error)=/.test(h)) return;
+    const q = new URLSearchParams(h.slice(1));
+    const esperado = localStorage.getItem('caderneta-estado');
+    localStorage.removeItem('caderneta-estado');
+    history.replaceState(null, '', location.pathname + location.search);
+    if (!esperado || q.get('state') !== esperado) { this.erroRetorno = 'estado'; return; }
+    if (q.get('access_token')) {
+      this.token = q.get('access_token');
+      this.exp = Date.now() + ((+q.get('expires_in') || 3600) - 300) * 1000;
+      this.jaConectou = true; this.guardarToken();
+    } else this.erroRetorno = q.get('error') || 'erro';
+  },
+  /* tentativa automática no máximo a cada 10 minutos, para nunca entrar em ciclo */
+  podeTentarSozinho() { return !this.erroRetorno && Date.now() - (+localStorage.getItem('caderneta-redir-t') || 0) > 10 * 60000; },
+  redirecionar(silencioso) {
+    const estado = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem('caderneta-estado', estado);
+    localStorage.setItem('caderneta-redir-t', String(Date.now()));
+    // guarda o que ainda não subiu para enviar na volta
+    try { if (S.ready) { if (Store.dirty.size || Store.busy) localStorage.setItem('caderneta-pendente', '1'); Store.cache(); } } catch (e) { }
+    const u = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    const prm = { client_id: this.clientId, redirect_uri: this.retorno, response_type: 'token', scope: SCOPE, include_granted_scopes: 'true', state: estado };
+    const pr = silencioso ? 'none' : (this.jaConectou ? '' : 'consent');
+    if (pr) prm.prompt = pr;
+    for (const [k, v] of Object.entries(prm)) u.searchParams.set(k, v);
+    this.saindo = true;
+    location.assign(u.toString());
+  },
   get clientId() { return localStorage.getItem('caderneta-clientid') || CLIENT_ID_PADRAO; },
   set clientId(v) { localStorage.setItem('caderneta-clientid', v); },
   get jaConectou() { return localStorage.getItem('caderneta-conectou') === '1'; },
@@ -3147,6 +3186,11 @@ const Auth = {
   /* pede um token. silencioso = sem nenhuma janela; devolve null se precisar de clique */
   async pedir(silencioso) {
     if (!this.clientId) throw new Error('sem client id');
+    if (this.redirecao) {
+      if (silencioso) return null;               // sem clique, não sai da página
+      this.redirecionar(false);
+      return new Promise(() => { });             // a página vai para o Google
+    }
     if (this.pedindo) return this.pedindo;
     await this.carregar();
     this.pedindo = new Promise(resolve => {
@@ -3160,7 +3204,7 @@ const Auth = {
             if (r && r.access_token) {
               this.token = r.access_token;
               this.exp = Date.now() + ((r.expires_in || 3600) - 300) * 1000;
-              this.jaConectou = true;
+              this.jaConectou = true; this.guardarToken();
               fim(this.token);
             } else fim(null);
           },
@@ -3182,6 +3226,7 @@ const Auth = {
   sair() {
     const t = this.token;
     this.token = null; this.exp = 0; this.jaConectou = false;
+    localStorage.removeItem('caderneta-token');
     try { if (t && window.google && google.accounts) google.accounts.oauth2.revoke(t, () => { }); } catch (e) { }
   },
 };
@@ -3196,7 +3241,7 @@ const Cloud = {
     if (!tk) { const e = new Error('sem sessão'); e.semSessao = true; throw e; }
     const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + tk, ...(opts.headers || {}) } });
     if ((r.status === 401 || r.status === 403) && !tentou) {
-      Auth.token = null; Auth.exp = 0;
+      Auth.token = null; Auth.exp = 0; localStorage.removeItem('caderneta-token');
       const novo = await Auth.acessar(true);
       if (novo) return this.req(url, opts, true);
       const e = new Error('sem sessão'); e.semSessao = true; throw e;
@@ -3468,7 +3513,7 @@ function status() {
   else if (Store.mode === 'drive') el.innerHTML = `<b>Sincronizado</b> ${quandoTxt(Sync.ultimo || Store.ultimo)}<br><span class="small">Google Drive</span>`;
   else el.innerHTML = `<b>Salvo neste aparelho</b><br><button class="btn link small" data-act="conectar">Conectar ao Google Drive</button>`;
 }
-window.addEventListener('beforeunload', e => { if (Store.dirty.size || Store.busy) e.preventDefault(); });
+window.addEventListener('beforeunload', e => { if (!Auth.saindo && (Store.dirty.size || Store.busy)) e.preventDefault(); });
 
 /* Baixa, junta com o que está aqui e grava de volta. `manual` = veio do botão. */
 async function sincronizar(manual) {
@@ -3633,6 +3678,10 @@ function abrirLocal() {
 
 async function boot() {
   $('#app').innerHTML = '<div class="empty" style="padding-top:120px">Carregando…</div>';
+  Auth.lerRetorno(); Auth.lerToken();
+  if (localStorage.getItem('caderneta-pendente') && Auth.token) { localStorage.removeItem('caderneta-pendente'); Store.dirty.add('tudo'); }
+  if (Auth.erroRetorno && Auth.erroRetorno !== 'login_required' && Auth.erroRetorno !== 'interaction_required')
+    setTimeout(() => toast(Auth.erroRetorno === 'access_denied' ? 'Você cancelou a entrada no Google' : Auth.erroRetorno === 'redirect_uri_mismatch' ? 'Endereço de retorno não cadastrado no Google Cloud' : 'Não consegui entrar na conta Google'), 600);
   const cache = Store.lerCache();
   if (!Auth.clientId) { if (cache && cache.cfg) { abrirLocal(); status(); } else telaConfig(); return; }
   if (!Auth.jaConectou) { if (cache && cache.cfg) { abrirLocal(); status(); } else telaLogin(); return; }
@@ -3640,7 +3689,11 @@ async function boot() {
   if (cache && cache.cfg) {
     aplicar(cache); Store.mode = 'drive'; Store.precisaClique = true; status();
     const tk = await Auth.acessar(true);
-    if (!tk) { status(); return; }
+    if (!tk) {
+      // no app da tela inicial do iPhone, renova sozinho indo e voltando do Google
+      if (Auth.redirecao && Auth.podeTentarSozinho()) { Auth.redirecionar(true); return; }
+      status(); return;
+    }
     Store.precisaClique = false; status();
     await sincronizar();
     return;
