@@ -516,7 +516,7 @@ const Core = (() => {
   /* ===== Caixinhas como categorias dos gastos do próprio dono ===== */
   function categorias(cfg, mes) {
     const P = cfg.plan; if (!P) return [];
-    const fora = n => n === P.ap.cxES || n === P.ap.cxD || /parcela/i.test(n);
+    const fora = n => n === P.ap.cxES || n === P.ap.cxD || /parcela/i.test(n) || n === 'Sem caixinha';
     return planejamento(cfg, mes).caixinhas.filter(c => !fora(c.n)).map(c => ({ n: c.n, limite: c.v, tipo: c.tipo }));
   }
   /* saldo atual de cada caixinha (vindo do print) menos as compras do dono feitas depois dele */
@@ -765,8 +765,19 @@ function shell() {
   <nav class="tabs">${navMob}</nav>`;
   status();
 }
+/* tocar num botão logo depois de editar um campo: o campo salva no "change", mas o
+   redesenho espera o clique terminar — senão o botão some antes de receber o toque */
+let tocando = false, renderPendente = false, tocandoT = null;
+document.addEventListener('pointerdown', e => {
+  if (!e.target.closest('button,[data-act],[data-view],label')) return;
+  tocando = true; clearTimeout(tocandoT);
+  tocandoT = setTimeout(soltarToque, 800);
+}, true);
+function soltarToque() { tocando = false; clearTimeout(tocandoT); if (renderPendente) { renderPendente = false; render(); } }
+document.addEventListener('click', () => { if (tocando) setTimeout(soltarToque, 0); tocando = false; }, true);
 function render() {
   if (!S.ready) return;
+  if (tocando) { renderPendente = true; return; }
   const active = document.activeElement;
   const focusBind = active && active.dataset ? active.dataset.bind || active.dataset.focus : null;
   $$('[data-view]').forEach(b => { if (b.dataset.view !== S.view) b.removeAttribute('aria-current'); else b.setAttribute('aria-current', 'page'); });
@@ -990,6 +1001,15 @@ function migrarPrime() {
   return true;
 }
 
+/* personal chef: R$ 500 por mês no custo de vida (uma vez só) */
+function migrarChef() {
+  const P = S.cfg.plan; if (!P || P.migChef) return false;
+  P.migChef = 1;
+  if (!P.itens.some(i => /personal\s*chef/i.test(i.n)))
+    P.itens.push({ id: uid('i'), n: 'Personal chef', b: 500, r: 0, q: ['v', 1], mn: null, dia: null, cx: 'Personal chef', emp: false, lk: null, fx: null });
+  return true;
+}
+
 /* categorias = caixinhas do planejamento; inclui as já usadas que saíram do plano */
 function catsTodas(mes = S.mes) {
   const lista = Core.categorias(S.cfg, mes).map(c => c.n);
@@ -1091,14 +1111,14 @@ function vPlanejamento() {
     else baseCell = inp(`plan.itens.${i}.b`);
     const manual = it.mn != null;
     return `<tr>
-      <td>${inp(`plan.itens.${i}.n`, 'text', 'style="min-width:200px"')}</td>
+      <td><div style="display:flex;gap:4px;align-items:center"><button class="btn link small" data-act="gasto-edit" data-id="${it.id}" aria-label="Editar ${esc(it.n)}" title="Editar ou excluir">${ico('edit')}</button>${inp(`plan.itens.${i}.n`, 'text', 'style="min-width:180px"')}</div></td>
       <td>${baseCell}</td>
       <td style="width:70px">${it.fx || it.lk ? '' : inp(`plan.itens.${i}.r`, 'num', 'placeholder="0"')}</td>
       <td class="n">${brl(it.valor)}</td>
       <td style="width:200px"><div style="display:flex;gap:2px">${it.fx === 'imprevistos' ? '' : freqSel(i) + inp(`plan.itens.${i}.q.1`, 'num', 'style="width:52px;min-width:52px"')}</div></td>
       <td class="n" style="width:130px">${manual ? `<div style="display:flex;align-items:center;gap:2px">${inp(`plan.itens.${i}.mn`, 'numnull')}<button class="btn link" data-act="plan-auto" data-i="${i}" title="Voltar ao cálculo (${brl(it.calc)})">↺</button></div><span class="chip warn">ajustado à mão</span>` : `<b>${brl(it.mensal)}</b> <button class="btn link small" data-act="plan-manual" data-i="${i}" title="Definir valor mensal à mão">${ico('edit')}</button>`}</td>
       ${it.emp ? '' : `<td style="width:60px">${inp(`plan.itens.${i}.dia`, 'intnull', 'placeholder="—"')}</td><td>${inp(`plan.itens.${i}.cx`, 'text', 'list="cx-list" style="min-width:130px"')}</td>`}
-      <td><div class="row-actions">${it.fx ? '' : `<button class="btn link danger" data-act="plan-del" data-i="${i}" aria-label="Excluir">${ico('trash')}</button>`}</div></td></tr>`;
+      <td><div class="row-actions">${it.emp && it.fx ? '' : `<button class="btn link danger" data-act="plan-del" data-i="${i}" aria-label="Excluir">${ico('trash')}</button>`}</div></td></tr>`;
   };
   const lista = (key, titulo) => `<div class="card"><h3 style="margin-bottom:6px">${titulo}</h3><table><tbody>${P[key].map((x, i) => `<tr><td>${inp(`plan.${key}.${i}.n`, 'text')}</td><td class="n" style="width:130px">${inp(`plan.${key}.${i}.v`)}</td><td style="width:40px"><button class="btn link danger" data-act="list-del" data-k="plan.${key}" data-i="${i}" aria-label="Excluir">${ico('trash')}</button></td></tr>`).join('')}
     </tbody><tfoot><tr><td>Total</td><td class="n">${brl(P[key].reduce((s, x) => s + (x.v || 0), 0))}</td><td></td></tr></tfoot></table>
@@ -1688,6 +1708,51 @@ function dlgCompra(id, pre = {}) {
 }
 const fd1 = (f, k) => new FormData(f).get(k);
 
+/* gasto do custo de vida: criar, editar tudo ou excluir */
+function dlgGasto(id) {
+  const P = S.cfg.plan;
+  const it = id ? P.itens.find(x => x.id === id) : null;
+  const v = it || { n: '', b: '', r: 0, q: ['v', 1], dia: null, cx: '' };
+  const cxs = [...new Set(P.itens.map(i => i.cx).filter(Boolean).concat([P.ap.cxES, P.ap.cxD]))];
+  const formula = it && (it.fx || it.lk);
+  const d = $('#dlg'); d.className = '';
+  d.innerHTML = `<form method="dialog" id="f-gasto">
+    <div class="dlg-head"><h2>${it ? 'Editar gasto' : 'Novo gasto'}</h2><button class="icon-btn" value="x" formnovalidate aria-label="Fechar">✕</button></div>
+    <div class="dlg-body">
+      <label class="field full">Nome<input name="n" value="${esc(v.n)}" required autocomplete="off" placeholder="Ex.: Personal chef"></label>
+      ${formula ? `<p class="full small muted" style="margin:0">O valor deste gasto é calculado por fórmula (${it.fx === 'dieta' ? 'limite da dieta − ajuda de custo' : 'ligado a uma cobrança mensal'}); ajuste o valor na tabela.</p>`
+        : `<label class="field">Valor (R$)<input name="b" inputmode="decimal" value="${esc(numBR(v.b))}" required></label>
+      <label class="field">Reajuste %<input name="r" inputmode="decimal" value="${esc(numBR(v.r || 0))}"></label>`}
+      <label class="field">Frequência<select name="q0"><option value="v" ${v.q[0] === 'v' ? 'selected' : ''}>vezes por mês</option><option value="c" ${v.q[0] === 'c' ? 'selected' : ''}>a cada n meses</option></select></label>
+      <label class="field">Quantidade<input name="q1" type="number" min="0" step="any" value="${v.q[1] ?? 1}"><span class="muted" style="font-weight:400">1 = todo mês · 12 com “a cada” = anual</span></label>
+      <label class="field">Dia do vencimento<input name="dia" type="number" min="1" max="31" value="${v.dia ?? ''}" placeholder="—"></label>
+      <label class="field">Caixinha<input name="cx" list="cx-dlg" value="${esc(v.cx || '')}" autocomplete="off" placeholder="Ex.: Saldo em conta"><datalist id="cx-dlg">${cxs.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+      <div class="full small muted" id="g-prev"></div>
+    </div>
+    <div class="dlg-foot">${it ? `<button class="btn danger" type="button" id="g-del">${ico('trash', 'Excluir')}</button>` : ''}<div class="spacer"></div>
+      <button class="btn" value="x" formnovalidate>Cancelar</button><button class="btn primary" value="ok">${it ? 'Salvar' : 'Adicionar'}</button></div></form>`;
+  const f = $('#f-gasto');
+  const ler = () => { const fd = new FormData(f); return { n: String(fd.get('n') || '').trim(), b: parseNum(fd.get('b')), r: parseNum(fd.get('r')) || 0, q: [fd.get('q0'), Number(fd.get('q1')) || 0], dia: parseInt(fd.get('dia')) || null, cx: String(fd.get('cx') || '').trim() }; };
+  const prev = () => { if (formula) return; const x = ler(); const val = (x.b || 0) * (1 + x.r / 100); const m = x.q[0] === 'c' ? val / (x.q[1] || 1) : val * x.q[1]; $('#g-prev').innerHTML = `Por mês: <b style="color:var(--ink)">${brl(m)}</b>`; };
+  f.addEventListener('input', prev); prev();
+  if (it) $('#g-del').onclick = async () => {
+    if (!await confirmar(`Excluir “${it.n}” do custo de vida?`)) return;
+    P.itens = P.itens.filter(x => x !== it); d.close(); Store.mark('cfg'); render(); toast('Gasto excluído');
+  };
+  f.addEventListener('submit', e => {
+    if (e.submitter && e.submitter.value !== 'ok') return;
+    const x = ler();
+    if (!x.n) { e.preventDefault(); toast('Dê um nome ao gasto'); return; }
+    if (!formula && !isFinite(x.b)) { e.preventDefault(); toast('Valor inválido'); return; }
+    const alvo = it || { id: uid('i'), mn: null, emp: false, lk: null, fx: null };
+    Object.assign(alvo, { n: x.n, q: x.q, dia: x.dia, cx: x.cx });
+    if (!formula) Object.assign(alvo, { b: x.b, r: x.r });
+    if (!it) P.itens.push(alvo);
+    Store.mark('cfg'); render(); toast(it ? 'Gasto salvo' : `“${x.n}” adicionado ao custo de vida`);
+  });
+  d.showModal(); setTimeout(() => $('[name=n]', f).focus(), 30);
+}
+
 function dlgPag(id, pre = {}) {
   const p = id ? S.pags.find(x => x.i === id) : null;
   const d = $('#dlg'); d.className = '';
@@ -1795,7 +1860,8 @@ document.addEventListener('click', async e => {
     case 'pf-per': S.pf.per = t.dataset.v; render(); break;
     case 'plan-manual': { const it = S.cfg.plan.itens[+t.dataset.i]; const R = Core.planejamento(S.cfg, S.mes); it.mn = Core.r2(R.itens.find(x => x.id === it.id).calc); Store.mark('cfg'); render(); break; }
     case 'plan-auto': S.cfg.plan.itens[+t.dataset.i].mn = null; Store.mark('cfg'); render(); break;
-    case 'plan-add': S.cfg.plan.itens.push({ id: uid('i'), n: 'Novo gasto', b: 0, r: 0, q: ['v', 1], mn: null, dia: null, cx: '', emp: false, lk: null, fx: null }); Store.mark('cfg'); render(); break;
+    case 'plan-add': dlgGasto(null); break;
+    case 'gasto-edit': dlgGasto(t.dataset.id); break;
     case 'plan-del': { const it = S.cfg.plan.itens[+t.dataset.i]; if (await confirmar(`Excluir “${it.n}” do custo de vida?`)) { S.cfg.plan.itens.splice(+t.dataset.i, 1); Store.mark('cfg'); render(); } break; }
     case 'list-add': { const arr = getPath(S.cfg, t.dataset.k); arr.push({ n: 'Novo', v: 0 }); Store.mark('cfg'); render(); break; }
     case 'list-del': {
@@ -3323,7 +3389,7 @@ function avisoDuplicados(fora) {
 
 async function posCarga() {
   if (!S.ready) return;
-  if (migrarPrime()) { Store.mark('cfg'); render(); }
+  if (migrarPrime() | migrarChef()) { Store.mark('cfg'); render(); }
   const sem = Recorr.semear();
   const r = Recorr.sincronizar();
   if (sem + r.mudou) { reindex(); render(); Store.mark(); }
@@ -3898,6 +3964,7 @@ function iniciar() {
   if (S.cfg.taxa != null) { delete S.cfg.taxa; Store.dirty.add('tudo'); }
   for (const m of S.cfg.meios || []) if (m.t !== 'cartao' && !m.f) { m.f = 13; Store.dirty.add('tudo'); }
   if (migrarPrime()) Store.dirty.add('tudo');
+  if (migrarChef()) Store.dirty.add('tudo');
   const vistos = new Set();
   for (const it of S.cfg.plan.itens) { if (!it.id || vistos.has(it.id)) { it.id = uid('i'); Store.dirty.add('tudo'); } vistos.add(it.id); }
   shell(); render();
