@@ -12,7 +12,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-
 :root{
   --paper:#E9EEEC; --sheet:#FAFBFA; --sheet-2:#F1F5F3; --ink:#15262B; --ink-2:#51646A; --ink-3:#7F9095;
   --rule:#CAD5D1; --rule-2:#DFE6E3;
@@ -578,7 +577,6 @@ const Core = (() => {
 
   return { r2, pad, ym, addMonths, addDays, daysIn, dateIn, monthDiff, todayISO, meioDe, vencimento, faturaAuto, gerarParcelas, indexar, resumo, saldoDevedor, dataCobranca, planejamento, apTabela, diasUteis, diasDaAjuda, categorias, gastosPorCaixinha, alertasCaixinha };
 })();
-
 
 </script>
 <script>
@@ -2011,7 +2009,6 @@ document.addEventListener('input', e => {
   if (t.dataset.lf === 'q') { S.lf.q = t.value; S.lf.lim = 80; clearTimeout(S._qt); S._qt = setTimeout(() => { render(); const el = $('[data-lf="q"]'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 250); }
 });
 
-
 </script>
 <script>
 /* ===== Leitura das faturas em PDF e conferência com os lançamentos ===== */
@@ -3080,6 +3077,9 @@ const Recorr = {
     return R;
   },
   chave(cobId, pessoa, mes) { return `${cobId}|${pessoa}|${mes}`; },
+  /* código fixo da vaga: o mesmo em qualquer aparelho, então celular e computador
+     criando a mesma cobrança do mês geram o mesmo lançamento, e não dois */
+  idVaga(k) { return 'r' + hashTexto(k) + hashTexto(k.split('').reverse().join('')); },
   mesDe(c) { return c.p && c.p[0] ? c.p[0][2].slice(0, 7) : c.dt.slice(0, 7); },
   /* chave da vaga que este lançamento ocupa. Fica gravada em c.rk, então editar
      data ou valor não "libera" a vaga nem faz a rotina criar outro no lugar. */
@@ -3182,7 +3182,9 @@ const Recorr = {
     const fora = [];
     for (const arr of grupos.values()) {
       if (arr.length < 2) continue;
-      arr.sort((a, b) => (b.man ? 1 : 0) - (a.man ? 1 : 0));
+      // fica: o que você fez à mão; depois, o de código fixo da vaga
+      const nota = c => (c.man ? 2 : 0) + (c.i === this.idVaga(this.chaveDe(c)) ? 1 : 0);
+      arr.sort((a, b) => nota(b) - nota(a));
       for (const c of arr.slice(1)) if (c.rec && !c.man) fora.push(c);
     }
     return fora;
@@ -3191,6 +3193,8 @@ const Recorr = {
     const fora = this.duplicados(); if (!fora.length) return fora;
     const set = new Set(fora);
     S.compras = S.compras.filter(c => !set.has(c));
+    // marca como apagadas, senão a próxima sincronização traz as cópias de volta do Drive
+    Store.apagou(...fora.map(c => c.i));
     return fora;
   },
 
@@ -3215,13 +3219,16 @@ const Recorr = {
     const R = this.cfg();
     const skip = new Set(R.skip);
     const tem = new Set(S.compras.map(c => this.chaveDe(c)).filter(Boolean));
+    // código fixo, a não ser que ele já esteja em uso ou marcado como apagado
+    const usados = new Set(S.compras.map(c => c.i).concat((S.cfg.del || []).map(d => d.i)));
+    const idPara = k => { const id = this.idVaga(k); return usados.has(id) ? uid('r') : id; };
     let n = 0;
     for (const s of this.vagas()) {
       if (tem.has(s.k) || skip.has(s.k)) continue;
       const meio = Core.meioDe(S.cfg, s.cob.m);
       const dt = Core.dataCobranca(S.cfg, s.cob, s.mes);
       const venc = Core.dateIn(s.mes, meio.v || 15);
-      S.compras.push({ i: uid('r'), d: s.r.d, m: s.cob.m, c: s.cob.n, dt, v: s.r.v, n: 1, p: [[1, s.r.v, venc]], rec: s.cob.id, rk: s.k });
+      S.compras.push({ i: idPara(s.k), d: s.r.d, m: s.cob.m, c: s.cob.n, dt, v: s.r.v, n: 1, p: [[1, s.r.v, venc]], rec: s.cob.id, rk: s.k });
       tem.add(s.k); n++;
     }
     return n;
@@ -3396,7 +3403,11 @@ async function posCarga() {
   if (S.cfg.shareAuto !== false) { try { await Share.atualizarMudados(); } catch (e) { console.warn(e); } }
   const lim = await Limpeza.talvez();
   const fila = [];
-  if (r.removidos.length) fila.push(() => avisoDuplicados(r.removidos));
+  // aviso discreto, e não repete o mesmo número no mesmo dia
+  let ultimoAviso = null; try { ultimoAviso = JSON.parse(localStorage.getItem('caderneta-aviso-dup') || 'null'); } catch (e) { }
+  const repetido = ultimoAviso && ultimoAviso.n === r.removidos.length && Date.now() - ultimoAviso.t < 864e5;
+  if (r.removidos.length) try { localStorage.setItem('caderneta-aviso-dup', JSON.stringify({ n: r.removidos.length, t: Date.now() })); } catch (e) { }
+  if (r.removidos.length && !repetido) toast(`${r.removidos.length} cobrança${r.removidos.length > 1 ? 's' : ''} ${r.removidos.length > 1 ? 'mensais' : 'mensal'} repetida${r.removidos.length > 1 ? 's' : ''} removida${r.removidos.length > 1 ? 's' : ''}`);
   if (lim && (lim.nParc || lim.nPag)) fila.push(() => avisoLimpeza(lim));
   const proximo = () => {
     const f = fila.shift(); if (!f) return;
