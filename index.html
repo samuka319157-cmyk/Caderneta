@@ -8,6 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Caderneta">
+<meta name="app-versao" content="2026-10-22 14:24">
 <title>Caderneta — cartões e empréstimos</title>
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -274,6 +275,11 @@ tr:hover .nota-bt.vazia,.nota-bt.vazia:focus-visible,.ledger-head .nota-bt.vazia
 .alerta-cx{background:var(--stamp);color:#fff;border-color:var(--stamp);font-weight:700}
 .alerta-cx svg{width:17px;height:17px}
 @media (max-width:900px){.alerta-cx{order:10;width:100%;justify-content:center}}
+/* aviso de versão nova */
+.aviso-versao{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:60;display:flex;gap:12px;align-items:center;
+  background:var(--ink);color:var(--paper);padding:10px 12px 10px 16px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);font-weight:600;font-size:14px;max-width:calc(100vw - 32px)}
+.aviso-versao .btn.primary{background:var(--paper);color:var(--ink);border-color:var(--paper)}
+@media (min-width:901px){.aviso-versao{bottom:24px}}
 
 </style>
 </head>
@@ -1301,7 +1307,9 @@ function vAjustes() {
       : `<button class="btn primary" data-act="conectar">Conectar ao Google Drive</button>`}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="exp-json">Exportar backup (.json)</button><button class="btn" data-act="exp-csv">Exportar parcelas (.csv)</button>
     <label class="btn">Importar backup ou arquivo<input type="file" accept=".json,application/json" id="imp-json" hidden></label></div>
-    ${c.atualizado ? `<p class="small muted">Última gravação: ${new Date(c.atualizado).toLocaleString('pt-BR')}</p>` : ''}</div></section>
+    ${c.atualizado ? `<p class="small muted">Última gravação: ${new Date(c.atualizado).toLocaleString('pt-BR')}</p>` : ''}
+    <p class="small muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 0">Versão do app: <b style="color:var(--ink-2)">${esc(Atualiza.atual || '—')}</b>
+      <button class="btn link small" data-act="ver-atualizacao">Verificar atualização</button></p></div></section>
   </div>
 
   <section class="sec"><div class="sec-head"><h2>Meios de pagamento</h2><p>Compras feitas antes do dia de fechamento entram na fatura que vence no mesmo mês; a partir dele, na do mês seguinte. Vale também para dinheiro e Pix. “Meses extras” empurra o vencimento (Nubank L vence no mês seguinte ao fechamento).</p></div>
@@ -1913,6 +1921,7 @@ document.addEventListener('click', async e => {
     case 'desconectar':
       if (await confirmar('Sair da conta Google neste aparelho? Os dados continuam no seu Drive e uma cópia fica neste navegador.', 'Desconectar')) { await Store.flush(true); Auth.sair(); location.reload(); }
       break;
+    case 'ver-atualizacao': await Atualiza.verificar(true); break;
     case 'exp-json': salvarArquivo(`caderneta-backup-${Core.todayISO()}.json`, JSON.stringify({ app: 'caderneta', versao: 1, cfg: S.cfg, compras: S.compras, pags: S.pags })); break;
     case 'exp-csv': {
       const q = s => `"${String(s).replace(/"/g, '""')}"`;
@@ -3912,6 +3921,63 @@ async function autoSync() {
   await sincronizar();
 }
 setInterval(autoSync, 60000);
+
+/* ===== Atualização do app =====
+   Compara a versão desta página com a publicada no GitHub Pages. Havendo uma nova,
+   recarrega sozinho — mas só quando nada está por salvar e você não está no meio
+   de uma edição. Senão, mostra um aviso e espera o momento seguro. */
+const Atualiza = {
+  atual: (document.querySelector('meta[name="app-versao"]') || {}).content || '',
+  nova: null, ultimaVez: 0, timer: null,
+  async verificar(manual) {
+    if (location.protocol === 'file:' || !navigator.onLine) { if (manual) toast('Sem conexão para verificar'); return false; }
+    if (!manual && Date.now() - this.ultimaVez < 10 * 60000) return false;
+    this.ultimaVez = Date.now();
+    try {
+      // 'reload' busca na rede e já guarda a página nova no cache do navegador
+      const r = await fetch(location.pathname, { cache: 'reload' });
+      if (!r.ok) throw new Error(r.status);
+      const m = (await r.text()).match(/<meta name="app-versao" content="([^"]+)">/);
+      const v = m && m[1];
+      if (!v || v === this.atual || v === '__VERSAO__') { if (manual) toast('O app já está na versão mais nova'); return false; }
+      this.nova = v; this.aplicar(manual);
+      return true;
+    } catch (e) { console.warn('verificar atualização', e); if (manual) toast('Não consegui verificar agora'); return false; }
+  },
+  seguro() {
+    const ativo = document.activeElement;
+    return !Store.dirty.size && !Store.busy && !Sync.rodando && !document.querySelector('dialog[open]')
+      && !(ativo && ativo.matches && ativo.matches('input,textarea,select'));
+  },
+  aplicar(manual) {
+    if (!this.nova) return;
+    // proteção contra ciclo: não recarrega duas vezes pela mesma versão em 10 min
+    let ja = null; try { ja = JSON.parse(localStorage.getItem('caderneta-atualizou') || 'null'); } catch (e) { }
+    const repetiu = ja && ja.v === this.nova && Date.now() - ja.t < 10 * 60000;
+    if (repetiu && !manual) { this.aviso(); return; }
+    if (!this.seguro()) {
+      if (Store.dirty.size && !Store.busy) Store.flush();
+      this.aviso();
+      clearTimeout(this.timer); this.timer = setTimeout(() => this.aplicar(manual), 4000);
+      return;
+    }
+    try { localStorage.setItem('caderneta-atualizou', JSON.stringify({ v: this.nova, t: Date.now() })); } catch (e) { }
+    toast('Atualizando o app…');
+    Auth.saindo = true;
+    setTimeout(() => location.reload(), 600);
+  },
+  aviso() {
+    if ($('#aviso-versao')) return;
+    const el = document.createElement('div');
+    el.id = 'aviso-versao'; el.className = 'aviso-versao';
+    el.innerHTML = `<span>Nova versão da Caderneta disponível</span><button class="btn small primary" type="button">Atualizar agora</button>`;
+    el.querySelector('button').onclick = () => { if (Store.dirty.size) Store.flush(); Auth.saindo = true; location.reload(); };
+    document.body.appendChild(el);
+  },
+};
+setTimeout(() => Atualiza.verificar(), 8000);
+setInterval(() => Atualiza.verificar(), 30 * 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) Atualiza.verificar(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) autoSync(); });
 window.addEventListener('focus', autoSync);
 window.addEventListener('online', () => { ultimoAuto = 0; if (Store.dirty.size) Store.flush(); autoSync(); });
