@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Caderneta">
-<meta name="app-versao" content="2026-10-22 14:24">
+<meta name="app-versao" content="2026-10-23 08:08">
 <title>Caderneta — cartões e empréstimos</title>
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -478,7 +478,8 @@ const Core = (() => {
     const diaHoje = Number(hoje.slice(8, 10));
     const mesHoje = hoje.slice(0, 7);
     const apHoje = apMes(mesHoje);
-    const saldoItens = pessoais.filter(i => i.cx === P.ap.cxES);
+    // o que sai da conta: as contas do saldo em conta e qualquer gasto com dia de envio marcado
+    const saldoItens = pessoais.filter(i => i.cx === P.ap.cxES || i.dia);
     const saldoCx = saldoItens.reduce((s, i) => s + i.mensal, 0) + apHoje.e + apHoje.s;
     const totalCxHoje = totalCx - apSel.total + apHoje.total;
     const aGuardar = totalCxHoje - saldoCx;
@@ -1007,6 +1008,15 @@ function migrarPrime() {
   it.q = ['v', 1]; it.r = 0; delete it.mn; delete it.lk;
   if (P.cxSaldo) delete P.cxSaldo[it.cx];
   it.cx = P.ap.cxES;
+  return true;
+}
+
+/* dízimo: enviado todo dia 28 (uma vez só) */
+function migrarDizimo() {
+  const P = S.cfg.plan; if (!P || P.migDizimo) return false;
+  P.migDizimo = 1;
+  const it = P.itens.find(i => /d[ií]zimo/i.test(i.n) && !i.emp);
+  if (it) it.dia = 28;
   return true;
 }
 
@@ -3410,7 +3420,7 @@ function avisoDuplicados(fora) {
 
 async function posCarga() {
   if (!S.ready) return;
-  if (migrarPrime() | migrarChef()) { Store.mark('cfg'); render(); }
+  if (migrarPrime() | migrarChef() | migrarDizimo()) { Store.mark('cfg'); render(); }
   const sem = Recorr.semear();
   const r = Recorr.sincronizar();
   if (sem + r.mudou) { reindex(); render(); Store.mark(); }
@@ -3449,7 +3459,12 @@ const Auth = {
   token: null, exp: 0, tc: null, lib: null, pedindo: null, saindo: false, erroRetorno: null,
   /* app aberto pelo ícone da tela inicial do iPhone: a janelinha do Google não consegue
      devolver o login, então o login vai e volta pela própria página */
-  get redirecao() { return navigator.standalone === true || localStorage.getItem('caderneta-login') === 'redirect'; },
+  get redirecao() {
+    if (localStorage.getItem('caderneta-login') === 'redirect') return true;
+    if (typeof navigator.standalone === 'boolean') return true;          // iPhone/iPad (Safari, tela inicial ou outro navegador)
+    const ua = navigator.userAgent;
+    return /Safari/.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|Android/.test(ua);  // Safari do Mac
+  },
   get retorno() { return location.origin + location.pathname.replace(/index\.html$/, ''); },
   guardarToken() { try { localStorage.setItem('caderneta-token', JSON.stringify({ t: this.token, exp: this.exp })); } catch (e) { } },
   lerToken() {
@@ -3515,6 +3530,7 @@ const Auth = {
     }
     if (this.pedindo) return this.pedindo;
     await this.carregar();
+    const inicio = Date.now();
     this.pedindo = new Promise(resolve => {
       let pronto = false;
       const fim = (v) => { if (pronto) return; pronto = true; this.pedindo = null; resolve(v); };
@@ -3530,7 +3546,13 @@ const Auth = {
               fim(this.token);
             } else fim(null);
           },
-          error_callback: () => fim(null),
+          error_callback: (err) => {
+            // janelinha bloqueada pelo navegador: passa a usar ida e volta pela própria página
+            if (!silencioso && err && (err.type === 'popup_failed_to_open' || err.type === 'popup_closed' && Date.now() - inicio < 1500)) {
+              localStorage.setItem('caderneta-login', 'redirect'); this.pedindo = null; this.redirecionar(false); return;
+            }
+            fim(null);
+          },
         });
         this.tc.requestAccessToken();
       } catch (e) { console.warn(e); fim(null); }
@@ -4047,6 +4069,7 @@ function iniciar() {
   for (const m of S.cfg.meios || []) if (m.t !== 'cartao' && !m.f) { m.f = 13; Store.dirty.add('tudo'); }
   if (migrarPrime()) Store.dirty.add('tudo');
   if (migrarChef()) Store.dirty.add('tudo');
+  if (migrarDizimo()) Store.dirty.add('tudo');
   const vistos = new Set();
   for (const it of S.cfg.plan.itens) { if (!it.id || vistos.has(it.id)) { it.id = uid('i'); Store.dirty.add('tudo'); } vistos.add(it.id); }
   shell(); render();
