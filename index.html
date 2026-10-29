@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Caderneta">
-<meta name="app-versao" content="2026-10-23 08:08">
+<meta name="app-versao" content="2026-10-29 07:56">
 <title>Caderneta — cartões e empréstimos</title>
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -1259,20 +1259,25 @@ function vCaixinhasGasto() {
   const ordem = l => l.saldo == null ? -1 : isFinite(l.pct) ? l.pct : 9;
   const linhas = G.linhas.slice().sort((a, b) => ordem(b) - ordem(a) || a.n.localeCompare(b.n, 'pt-BR'));
   const corDe = l => l.pct >= 1 ? 'var(--stamp)' : l.pct >= lim / 100 ? 'var(--owed)' : 'var(--paid)';
+  // quanto guardar por mês em cada caixinha: soma dos gastos do planejamento com essa caixinha
+  const mensal = new Map(Core.categorias(S.cfg, S.mes).map(c => [c.n, c.limite]));
+  const totMensal = linhas.reduce((t, l) => t + (mensal.get(l.n) || 0), 0);
   const rows = linhas.map(l => {
     const sem = l.saldo == null;
     return `<tr>
     <td><b>${esc(l.n)}</b>${l.tipo === 'antiga' ? ' <span class="chip warn" title="Essa caixinha não existe mais no planejamento">fora do plano</span>' : ''}${l.em ? `<div class="small muted">print de ${dataBR(l.em)}</div>` : ''}</td>
+    <td class="n">${mensal.get(l.n) ? brl(mensal.get(l.n)) : '<span class="muted">—</span>'}</td>
     <td class="n" style="width:130px"><input class="num" data-cxsaldo="${esc(l.n)}" inputmode="decimal" value="${sem ? '' : l.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}" placeholder="informar" aria-label="Saldo de ${esc(l.n)}"></td>
     <td class="n">${l.gasto ? `<button class="btn link small" data-act="cx-ver" data-cat="${esc(l.n)}" title="Ver as compras">${brl(l.gasto)}</button>` : '—'}</td>
     <td class="n ${!sem && l.resta < 0 ? 'owed' : ''}"><b>${sem ? '—' : brl(l.resta)}</b></td>
     <td style="min-width:120px">${sem ? '<span class="small muted">sem saldo</span>' : `<div class="cx-barra"><i style="width:${Math.min(100, (isFinite(l.pct) ? l.pct : 1) * 100)}%;background:${corDe(l)}"></i></div><span class="small" style="color:${corDe(l)};font-weight:700">${isFinite(l.pct) ? Math.round(l.pct * 100) + '% usado' : 'estourou'}</span>`}</td></tr>`;
   }).join('');
   return `<section class="sec" id="cx-gastos"><div class="sec-head"><h2>Caixinhas de ${esc(S.cfg.eu)}</h2>
-    <p>Saldo de cada caixinha no último print, menos as compras de ${esc(S.cfg.eu)} com essa categoria feitas depois do dia do print.</p><div class="spacer"></div>
+    <p>“Guardar por mês” soma os gastos do planejamento de cada caixinha em ${mesNome(S.mes)}. O disponível é o saldo do último print menos as compras de ${esc(S.cfg.eu)} com essa categoria feitas depois do dia do print.</p><div class="spacer"></div>
     <button class="btn small" data-act="colar-cx">${ico('copy', 'Colar saldos')}</button></div>
-    <div class="tbl-wrap"><table><thead><tr><th>Caixinha</th><th class="n">Saldo no print</th><th class="n">Gasto depois</th><th class="n">Disponível</th><th>Uso</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="5" class="empty">Nenhuma caixinha no planejamento.</td></tr>'}</tbody></table></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Caixinha</th><th class="n">Guardar por mês</th><th class="n">Saldo no print</th><th class="n">Gasto depois</th><th class="n">Disponível</th><th>Uso</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="6" class="empty">Nenhuma caixinha no planejamento.</td></tr>'}</tbody>
+    ${rows ? `<tfoot><tr><td>Total por mês</td><td class="n">${brl(totMensal)}</td><td colspan="4"></td></tr></tfoot>` : ''}</table></div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:10px">
       ${G.semCat.length ? `<button class="btn small" data-act="cx-semcat">${G.semCat.length} compra(s) de ${esc(S.cfg.eu)} sem categoria ${G.desde ? `desde ${dataBR(G.desde)}` : `em ${mesCurto(S.mes)}`}</button>` : ''}
       <label class="small" style="display:inline-flex;gap:6px;align-items:center;font-weight:600;color:var(--ink-2)">Avisar quando gastar ${inp('plan.alertaPct', 'int', 'style="width:56px" placeholder="85"')} % do saldo</label>
